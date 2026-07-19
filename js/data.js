@@ -15,7 +15,7 @@ export const DEFAULT_PROFILE = {
   age: 30,
   weightKg: 75,
   heightCm: 178,
-  goal: 'Lean muscle gain — look ripped and sporty. Trains weightlifting 4–5×/week.',
+  goal: 'Lean muscle gain — look ripped and sporty.',
   condition: 'Ulcerative colitis (colitis ulcerosa). Goal: no flare-provoking foods; long-term reduce symptoms toward remission.',
   triggers: '', // user-known personal trigger foods, free text
   targets: {
@@ -25,20 +25,6 @@ export const DEFAULT_PROFILE = {
     carbs: 300,   // g/day
   },
 };
-
-// A rolling read-only mirror of the gym-plan (updated by the separate claude.ai
-// "Gym Plan" project). Used only to time carbs/protein around training.
-export const TRAINING_WEEK = [
-  { day: 'Sun', session: 'Upper C — Pull & arms' },
-  { day: 'Mon', session: 'Rest' },
-  { day: 'Tue', session: 'Rest' },
-  { day: 'Wed', session: 'Upper A — Chest focus' },
-  { day: 'Thu', session: 'Legs' },
-  { day: 'Fri', session: 'Rest' },
-  { day: 'Sat', session: 'Upper B' },
-];
-
-export const SESSION_OPTIONS = ['Rest', 'Upper body', 'Leg day', 'Full body / other'];
 
 // Curated staples available in Rewe / Edeka online shops (Germany).
 // Macros are per 100 g (approx.). uc: 'both' = fine flare & remission,
@@ -73,8 +59,8 @@ export const FOODS = [
 // ---- Nutrition rules encoded for the model (and shown in-app) ----
 export const RULES = {
   muscle: [
-    'Protein target ~200 g/day spread across 4–5 meals (~40 g each), including one serving within ~2 h post-training.',
-    'Lean gain = slight calorie surplus. Push carbs & total calories higher on TRAINING days (esp. leg day and chest day); keep rest days closer to maintenance.',
+    'Protein target ~200 g/day spread across 4–5 meals (~40 g each).',
+    'Lean gain = a slight, steady daily calorie surplus. Keep protein high and carbs adequate to support recovery and training.',
     'Prioritise gut-friendly protein: eggs, fish, skinless poultry, quark/skyr, whey ISOLATE. Go easy on large amounts of red/processed meat.',
     'Creatine monohydrate 5 g/day is safe and effective; hydrate well.',
   ],
@@ -105,7 +91,7 @@ export function buildSystemPrompt(profile, mode) {
   const modeRules = mode === 'flare' ? RULES.flare : RULES.remission;
   return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have two jobs at once and must always balance BOTH:
 
-1) MUSCLE / PHYSIQUE: help him build lean muscle and look ripped. He does weightlifting 4–5×/week.
+1) MUSCLE / PHYSIQUE: help him build lean muscle and look ripped.
 2) ULCERATIVE COLITIS (colitis ulcerosa): every recommendation must avoid provoking gut inflammation, and steer toward long-term symptom reduction.
 
 USER PROFILE
@@ -341,16 +327,10 @@ Return JSON:
 - upgraded_version: a short improved version of the recipe (a few lines) that keeps the spirit but better hits both goals.`;
 }
 
-export function buildPlanInstruction(session, extra) {
+export function buildPlanInstruction(extra) {
   return `Build ONE full day of eating that hits the daily targets as closely as possible.
 
-Context for today:
-- Training session today: ${session}. ${
-    session === 'Leg day' || session === 'Upper body' || session === 'Full body / other'
-      ? 'This is a TRAINING day — bias carbs & total calories up, and place a protein+carb meal after training.'
-      : 'This is a REST day — keep calories near maintenance, protein still high.'
-  }
-- Extra notes from the user: ${extra || '(none)'}
+Extra notes from the user: ${extra || '(none)'}
 
 Requirements:
 - 4–5 meals. Every meal shows items with amount, protein_g and kcal.

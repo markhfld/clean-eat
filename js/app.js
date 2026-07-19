@@ -1,7 +1,7 @@
 // app.js — UI, navigation and event wiring.
 
 import { store } from './store.js';
-import { FOODS, RULES, SESSION_OPTIONS, TRAINING_WEEK } from './data.js';
+import { FOODS, RULES } from './data.js';
 import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, analyzeRecipe } from './api.js';
 
 const appEl = document.getElementById('app');
@@ -19,15 +19,8 @@ const state = {
   scan: { dataUrl: null, result: null, loading: false, error: '' },
   recipe: { text: '', result: null, loading: false, error: '' },
   supp: { brand: '', product: '', ingredients: '', loading: false, error: '' },
-  plan: { session: guessSession(), extra: '', result: null, loading: false, error: '' },
+  plan: { extra: '', result: null, loading: false, error: '' },
 };
-
-function guessSession() {
-  const today = TRAINING_WEEK[new Date().getDay()]; // 0=Sun matches our array
-  if (!today || today.session === 'Rest') return 'Rest';
-  if (/leg/i.test(today.session)) return 'Leg day';
-  return 'Upper body';
-}
 
 // ---------- mode chip ----------
 function renderMode() {
@@ -68,17 +61,12 @@ function render() {
 function renderPlan() {
   const p = state.plan;
   const t = store.getProfile().targets;
-  const sessionPills = SESSION_OPTIONS.map(
-    (s) => `<button class="pill ${s === p.session ? 'active' : ''}" data-session="${esc(s)}">${esc(s)}</button>`
-  ).join('');
 
   appEl.innerHTML = `
     <h1>Today's plan</h1>
     <p class="sub">Targets: ${t.kcal} kcal · ${t.protein}g protein · ${t.fat}g fat · ${t.carbs}g carbs</p>
 
     <div class="card">
-      <label>Training today</label>
-      <div class="pill-row" id="sessionPills">${sessionPills}</div>
       <label>Anything to factor in? (optional)</label>
       <textarea id="planExtra" placeholder="e.g. short on time, have salmon in the fridge, mild symptoms today…">${esc(p.extra)}</textarea>
       <button class="btn" id="planBtn" ${p.loading ? 'disabled' : ''}>
@@ -89,12 +77,6 @@ function renderPlan() {
     <div id="planResult">${p.result ? planResultHtml(p.result) : ''}</div>
   `;
 
-  document.getElementById('sessionPills').addEventListener('click', (e) => {
-    const b = e.target.closest('.pill');
-    if (!b) return;
-    p.session = b.dataset.session;
-    renderPlan();
-  });
   document.getElementById('planExtra').addEventListener('input', (e) => { p.extra = e.target.value; });
   document.getElementById('planBtn').addEventListener('click', runPlan);
 }
@@ -103,7 +85,7 @@ async function runPlan() {
   const p = state.plan;
   p.loading = true; p.error = ''; renderPlan();
   try {
-    p.result = await planDay(p.session, p.extra);
+    p.result = await planDay(p.extra);
   } catch (e) {
     p.error = e.message;
   } finally {
@@ -426,12 +408,6 @@ function renderProfile() {
       </div>
       <button class="btn" id="saveProfile">Save profile</button>
       <div id="profStatus" class="note" style="margin-top:8px"></div>
-    </div>
-
-    <div class="card">
-      <h2 style="margin-top:0">Training week (read-only)</h2>
-      <p class="note">Mirror of the Gym Plan project — used to time carbs. Edit it in the gym-plan folder / claude.ai project.</p>
-      ${TRAINING_WEEK.map((d) => `<div class="shop-item"><span>${d.day}</span><span class="note">${esc(d.session)}</span></div>`).join('')}
     </div>
   `;
 

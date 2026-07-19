@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Clean Eat** — a personal, phone-first nutrition assistant (PWA) for one person. It optimises every recommendation for **two simultaneous goals**:
 
-1. **Lean muscle gain** — ~200 g protein/day, slight calorie surplus, timed around weightlifting 4–5×/week.
+1. **Lean muscle gain** — ~200 g protein/day on a slight, steady calorie surplus.
 2. **Ulcerative colitis (colitis ulcerosa)** — avoid flare-provoking foods; steer toward remission.
 
 These goals often conflict (classic bulking foods can irritate the gut). The whole app exists to resolve that tension: **the UC constraint always wins**, and the app offers a gut-friendly swap.
@@ -27,9 +27,9 @@ Dependency-free static PWA. **No backend, no build step.** It calls the **Anthro
 
 The mode chip (top-right) switches `store.getMode()` between `'flare'` and `'remission'`. This changes which rule block `buildSystemPrompt` injects, so scans and plans give different advice. When editing, keep the three `RULES` blocks meaningfully distinct — flare = low-residue/low-fibre/gentle; remission = anti-inflammatory + gradual widening.
 
-## The `gym-plan/` folder is READ-ONLY
+## No workout/training coupling
 
-`gym-plan/` is a local export of a **separate** claude.ai "Gym Plan" project (regenerated daily there). Nutrition should *read* the training week to time carbs/protein, but **never edit `gym-plan/`** — local edits don't sync back. `TRAINING_WEEK` in `data.js` is a hand-maintained mirror used for carb timing; update it there, not by writing into `gym-plan/`.
+The app is intentionally **decoupled from the user's workouts** — meal plans do not take training sessions as input. There is a local `gym-plan/` folder (an export of a separate claude.ai project) but it is git-ignored, not read by the app, and must not be wired back in. Keep the nutrition side independent unless the user explicitly asks to reconnect it.
 
 ## Running & deploying
 

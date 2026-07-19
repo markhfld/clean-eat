@@ -2,7 +2,7 @@
 
 A personal, phone-friendly nutrition assistant that balances **two goals at once**:
 
-1. **Lean muscle** — hit ~200 g protein/day on a slight surplus, timed around weightlifting (4–5×/week).
+1. **Lean muscle** — hit ~200 g protein/day on a slight, steady surplus.
 2. **Ulcerative colitis (colitis ulcerosa)** — never provoke a flare, and steer toward long-term remission.
 
 It suggests and plans meals from **Rewe / Edeka** staples, and lets you **photograph a product in the shop** for an instant "good for me / avoid" verdict.
@@ -11,7 +11,7 @@ It suggests and plans meals from **Rewe / Edeka** staples, and lets you **photog
 
 A dependency-free static web app (PWA). It calls the **Claude API directly from your phone's browser** using **your own Anthropic API key**, stored only on your device. No backend, no server to run or pay for — just static files.
 
-- **Plan** — build a full day of meals + shopping list, tuned to today's training and your UC mode.
+- **Plan** — build a full day of meals + shopping list to hit your targets, tuned to your UC mode.
 - **Check** — two tools in one tab:
   - **Product** — snap a label → verdict (`great / good / caution / avoid`), gut + muscle assessment, better swap.
   - **Recipe** — describe a meal you make → evaluation, estimated protein/kcal, improvements and ingredient swaps.
@@ -56,4 +56,4 @@ This is a personal decision-support tool, not medical advice. Coordinate signifi
 - `js/api.js` — direct browser calls to the Claude API (scan / plan)
 - `js/app.js` — views, tab navigation, event wiring
 - `sw.js`, `manifest.webmanifest` — PWA (offline shell + install)
-- `gym-plan/` — **read-only** mirror of the separate claude.ai "Gym Plan" project (training days feed carb timing; never edited here)
+- `gym-plan/` — unrelated local folder, git-ignored; the app does **not** use it (nutrition is decoupled from workouts)

@@ -119,7 +119,7 @@ export async function scanProduct(dataUrl) {
   return parseJson(text);
 }
 
-export async function planDay(session, extra) {
+export async function planDay(extra) {
   const profile = store.getProfile();
   const mode = store.getMode();
   const { text } = await callClaude({
@@ -128,7 +128,7 @@ export async function planDay(session, extra) {
     schema: PLAN_SCHEMA,
     max_tokens: 8192, // room for adaptive-thinking tokens + the full day's JSON
     thinking: true,
-    messages: [{ role: 'user', content: buildPlanInstruction(session, extra) }],
+    messages: [{ role: 'user', content: buildPlanInstruction(extra) }],
   });
   return parseJson(text);
 }
