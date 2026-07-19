@@ -546,6 +546,7 @@ async function runLab(file) {
       l.error = extraction.summary || 'No lab markers found in that PDF.';
     } else {
       store.mergeLabResult(extraction, file.name);
+      store.setSuppReco(null); // new labs → old supplement recommendation is stale
     }
   } catch (e) {
     l.error = e.message;
@@ -636,7 +637,8 @@ function renderProfile() {
       carbs: +document.getElementById('tc').value || np.targets.carbs,
     };
     store.setProfile(np);
-    document.getElementById('profStatus').textContent = '✅ Saved.';
+    store.setSuppReco(null); // inputs changed → old supplement recommendation is stale
+    document.getElementById('profStatus').textContent = '✅ Saved. (Supplement recommendations will regenerate fresh.)';
   });
 }
 
