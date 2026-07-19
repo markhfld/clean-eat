@@ -21,6 +21,40 @@ function labTime(d) {
   return isNaN(t) ? -Infinity : t;
 }
 
+// ---- merge helpers for cross-device sync (union collections, keep newest) ----
+function mergeLabs(a, b) {
+  a = a || { markers: {}, uploads: [] };
+  b = b || { markers: {}, uploads: [] };
+  const markers = { ...(a.markers || {}) };
+  for (const [k, m] of Object.entries(b.markers || {})) {
+    const prev = markers[k];
+    const newer = !prev
+      || labTime(m.date) > labTime(prev.date)
+      || (labTime(m.date) === labTime(prev.date) && (m.at || 0) >= (prev.at || 0));
+    if (newer) markers[k] = m;
+  }
+  const uploads = [...(a.uploads || [])];
+  const seen = new Set(uploads.map((u) => u.at));
+  for (const u of (b.uploads || [])) if (!seen.has(u.at)) uploads.push(u);
+  uploads.sort((x, y) => (y.at || 0) - (x.at || 0));
+  return { markers, uploads: uploads.slice(0, 12) };
+}
+function mergeById(a, b) {
+  const map = new Map();
+  for (const x of (a || [])) map.set(x.id, x);
+  for (const y of (b || [])) {
+    const ex = map.get(y.id);
+    if (!ex || (y.at || 0) > (ex.at || 0)) map.set(y.id, y);
+  }
+  return [...map.values()].sort((x, y) => (y.at || 0) - (x.at || 0));
+}
+function mergeByKey(a, b, keyOf, limit) {
+  const map = new Map();
+  for (const x of [...(a || []), ...(b || [])]) map.set(keyOf(x), x);
+  const out = [...map.values()].sort((x, y) => (y.at || 0) - (x.at || 0));
+  return limit ? out.slice(0, limit) : out;
+}
+
 // Keys whose changes should sync across devices (excludes sync config/meta + nothing local-only).
 const SYNCED = [KEYS.apiKey, KEYS.profile, KEYS.mode, KEYS.scans, KEYS.supps, KEYS.suppReco, KEYS.labs];
 let changeHook = null;
@@ -137,6 +171,30 @@ export const store = {
         if (SYNCED.includes(k)) localStorage.setItem(k, JSON.stringify(v));
       }
     } finally { suspend = false; }
+  },
+  // Merge a remote bundle into local. Collections are UNIONed (never lost);
+  // scalars (profile/mode/apiKey/reco) take the remote value only if it's newer.
+  // Returns true if anything changed locally.
+  mergeRemote(data, remoteAt, localAt) {
+    if (!data) return false;
+    suspend = true;
+    let changed = false;
+    const setIfDiff = (key, valObj) => {
+      const next = JSON.stringify(valObj);
+      if (localStorage.getItem(key) !== next) { localStorage.setItem(key, next); changed = true; }
+    };
+    try {
+      if (KEYS.labs in data) setIfDiff(KEYS.labs, mergeLabs(read(KEYS.labs, { markers: {}, uploads: [] }), data[KEYS.labs]));
+      if (KEYS.supps in data) setIfDiff(KEYS.supps, mergeById(read(KEYS.supps, []), data[KEYS.supps]));
+      if (KEYS.scans in data) setIfDiff(KEYS.scans, mergeByKey(read(KEYS.scans, []), data[KEYS.scans], (s) => (s.at || 0) + '|' + (s.product_name || ''), 15));
+      // Scalars: last-write-wins by bundle timestamp.
+      if ((remoteAt || 0) > (localAt || 0)) {
+        for (const k of [KEYS.apiKey, KEYS.profile, KEYS.mode, KEYS.suppReco]) {
+          if (k in data) setIfDiff(k, data[k]);
+        }
+      }
+    } finally { suspend = false; }
+    return changed;
   },
   // Sync config (token/gistId/passphrase) and clock are LOCAL only — never synced.
   getSyncCfg: () => read('ce.sync', {}),

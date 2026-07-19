@@ -123,18 +123,17 @@ export async function pull() {
   if (!content) return { applied: false };
   const remote = await decryptBundle(content, cfg.passphrase);
   const local = store.getSyncMeta();
-  if ((remote.updatedAt || 0) > (local.updatedAt || 0)) {
-    store.importBundle(remote.data);
-    store.setSyncMeta({ updatedAt: remote.updatedAt });
-    rerender();
-    return { applied: true };
-  }
-  return { applied: false };
+  // Union collections + newest-wins scalars. Collections merge regardless of timestamp,
+  // so data unique to either device is never lost.
+  const changed = store.mergeRemote(remote.data, remote.updatedAt || 0, local.updatedAt || 0);
+  if (changed) { store.setSyncMeta({ updatedAt: Date.now() }); rerender(); }
+  return { applied: changed };
 }
 
-// Manual "Sync now": pull newest, then push local so both ends converge.
+// Full sync: merge in the remote, then push the merged result back so both ends converge.
 export async function syncNow() {
   const r = await pull();
   await push();
   return r;
 }
+

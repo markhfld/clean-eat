@@ -685,7 +685,7 @@ function wireSyncCard() {
     const id = idEl ? idEl.value.trim() : '';
     if (!id) { state.sync.error = 'Paste the Sync ID from your first device.'; renderProfile(); return; }
     store.setSyncCfg({ ...store.getSyncCfg(), gistId: id });
-    runSync(pull, 'Linked & pulled the latest data from your other device.');
+    runSync(syncNow, 'Linked. Merged data across both devices.');
   });
   on('syncNowBtn', 'click', () => runSync(syncNow, 'Synced.'));
   on('syncOffBtn', 'click', () => { store.setSyncCfg({}); state.sync = { loading: false, msg: '', error: '' }; renderProfile(); });
@@ -801,7 +801,7 @@ appEl.addEventListener('click', (e) => {
 // ---------- boot ----------
 initSync(render);
 render();
-if (syncConfigured()) pull().catch(() => {}); // pull newest on launch
+if (syncConfigured()) syncNow().catch(() => {}); // merge + push on launch
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }
