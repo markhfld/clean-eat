@@ -86,13 +86,31 @@ function foodTable() {
   ).join('\n');
 }
 
-export function buildSystemPrompt(profile, mode) {
+export function buildLabsSection(markers) {
+  if (!markers || !markers.length) {
+    return 'CURRENT BLOOD LABS\n- No lab results uploaded yet.';
+  }
+  // Out-of-range markers first so they get attention.
+  const order = { critical: 0, high: 1, low: 1, normal: 3, '': 4 };
+  const sorted = [...markers].sort((a, b) => (order[a.flag] ?? 4) - (order[b.flag] ?? 4));
+  const lines = sorted.map((m) => {
+    const flag = m.flag && m.flag !== 'normal' ? ` [${m.flag.toUpperCase()}]` : '';
+    const ref = m.reference_range ? ` (ref ${m.reference_range})` : '';
+    const date = m.date ? ` — ${m.date}` : '';
+    return `- ${m.name}: ${m.value}${m.unit ? ' ' + m.unit : ''}${ref}${flag}${date}`;
+  }).join('\n');
+  return `CURRENT BLOOD LABS (most recent value per marker, merged across uploads)
+${lines}`;
+}
+
+export function buildSystemPrompt(profile, mode, labMarkers = []) {
   const t = profile.targets;
   const modeRules = mode === 'flare' ? RULES.flare : RULES.remission;
-  return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have two jobs at once and must always balance BOTH:
+  return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have THREE jobs at once and must always balance them:
 
 1) MUSCLE / PHYSIQUE: help him build lean muscle and look ripped.
 2) ULCERATIVE COLITIS (colitis ulcerosa): every recommendation must avoid provoking gut inflammation, and steer toward long-term symptom reduction.
+3) OVERALL HEALTH: use the user's latest blood labs (below) to keep him healthy and actively improve any out-of-range markers over time.
 
 USER PROFILE
 - ${profile.sex}, age ${profile.age}, ${profile.weightKg} kg, ${profile.heightCm} cm.
@@ -105,6 +123,17 @@ DAILY TARGETS
 - Calories ~${t.kcal} kcal (slight surplus for lean gain)
 - Protein ~${t.protein} g  |  Fat ~${t.fat} g  |  Carbs ~${t.carbs} g
 
+${buildLabsSection(labMarkers)}
+
+HOW TO USE THE BLOOD LABS
+- Personalise every recommendation to nudge OUT-OF-RANGE markers toward the optimal range while keeping in-range markers stable, always within the UC constraint. Examples of the reasoning (adapt to what's actually present):
+  - Low ferritin / iron / haemoglobin → gut-friendly iron sources (poultry, fish, eggs, cooked spinach in remission; red meat only if tolerated) paired with vitamin C; note that iron supplements can irritate the gut.
+  - Elevated CRP / faecal calprotectin / other inflammation markers → tighten anti-inflammatory & lower-residue choices; more omega-3.
+  - Low vitamin D → recommend vitamin D3 (and daylight); low B12 / folate → relevant foods or a supplement.
+  - High LDL / triglycerides → favour omega-3 and unsaturated fats, cut fried/saturated & added sugar.
+  - Elevated liver enzymes → limit alcohol and very fatty/fried food; low albumin → push protein.
+- If a marker looks clinically concerning, briefly flag it and suggest discussing with his doctor. This app is nutrition guidance, NOT medical diagnosis.
+
 MUSCLE RULES
 ${RULES.muscle.map((r) => '- ' + r).join('\n')}
 
@@ -116,7 +145,7 @@ ${foodTable()}
 
 STYLE
 - Be concrete and practical for German supermarkets. Use grams and realistic portions.
-- When the two goals conflict (e.g. a great protein source that may irritate the gut in flare), the UC constraint wins, and you say why and give a swap.
+- When goals conflict (e.g. a great protein source that may irritate the gut in flare, or an iron-rich food that isn't UC-safe), the UC constraint wins, and you say why and give a swap.
 - Never invent that a food is UC-safe if it is a known irritant; flag uncertainty honestly.`;
 }
 
@@ -216,6 +245,42 @@ export const PLAN_SCHEMA = {
   },
   required: ['day_summary', 'meals', 'totals', 'shopping_list', 'coaching_notes'],
 };
+
+// ---- Blood labs (PDF extraction) ----
+export const LAB_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    lab_date: { type: 'string' }, // date of THIS report, ISO yyyy-mm-dd if possible, else ''
+    markers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          value: { type: 'string' },
+          unit: { type: 'string' },
+          reference_range: { type: 'string' },
+          flag: { type: 'string', enum: ['low', 'normal', 'high', 'critical', 'unknown'] },
+          category: { type: 'string' },
+          date: { type: 'string' }, // per-marker date if the report gives one, else ''
+        },
+        required: ['name', 'value', 'unit', 'reference_range', 'flag', 'category', 'date'],
+      },
+    },
+    summary: { type: 'string' },
+  },
+  required: ['lab_date', 'markers', 'summary'],
+};
+
+export const LAB_INSTRUCTION = `This PDF is a blood laboratory report. Extract every measured marker.
+
+For each marker return: name (standardised English name, e.g. "Ferritin", "Vitamin D (25-OH)", "CRP", "Hemoglobin", "LDL cholesterol", "TSH"), value (as written), unit, reference_range (as printed, e.g. "30–400"), flag (low / normal / high / critical / unknown — infer from the value vs the reference range and any markers the lab printed), category (short group like "Iron status", "Inflammation", "Vitamins", "Lipids", "Liver", "Kidney", "Blood count", "Thyroid", "Metabolic"), and date (the collection/report date for that marker if shown, ISO yyyy-mm-dd, else "").
+
+Also return lab_date = the overall report/collection date (ISO yyyy-mm-dd if determinable, else ""), and summary = 1–3 sentences on the notable out-of-range findings in plain language.
+
+Preserve the original numbers exactly. If a value is non-numeric (e.g. "negative"), keep it as text. Do not invent markers that aren't in the report. If the PDF is not a lab report, return an empty markers array and say so in summary.`;
 
 // ---- Supplements ----
 export const SUPP_SCHEMA = {

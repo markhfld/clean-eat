@@ -17,7 +17,8 @@ A dependency-free static web app (PWA). It calls the **Claude API directly from 
   - **Recipe** — describe a meal you make → evaluation, estimated protein/kcal, improvements and ingredient swaps.
 - **Stack** — add supplements you take (brand + product, optionally paste the ingredient list) → ingredient-level UC compatibility + physique fit, saved to your stack.
 - **Foods** — curated Rewe/Edeka buys with per-100g protein/calories and mode rules.
-- **Profile** — API key, body stats, targets, known trigger foods. All local.
+- **Profile** — API key, body stats, targets, known trigger foods, and **blood labs**. All local.
+  - **Blood labs** — upload a lab-report **PDF**; Claude extracts your markers (value, unit, reference range, flag, date). Results are **merged and stored** — the newest value per marker is kept across uploads (labs with different marker sets accumulate), and every recommendation (Plan/Check/Stack) is tailored to move out-of-range markers toward healthy while respecting the UC constraint.
 - **Mode toggle** (top right) — flip between 🌿 **Remission** and 🔥 **Flare**; recommendations change accordingly.
 
 ## Setup
@@ -42,7 +43,7 @@ Push this folder to a repo and enable Pages (branch = `main`, folder = `/root` o
 
 ## Privacy
 
-Your API key, profile, and scan history live in your browser's `localStorage`. The only data that leaves the device is the photo/prompt you send to the Claude API when you scan or plan.
+Your API key, profile, scan history, and blood-lab markers live in your browser's `localStorage`. Data leaves the device only when you make a request to the Claude API — the photo when you scan, the text when you plan/evaluate, and the **lab-report PDF when you upload it** (sent to Claude to read; only the extracted markers are stored, the PDF itself is not).
 
 ## Not medical advice
 

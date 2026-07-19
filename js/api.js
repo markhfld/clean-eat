@@ -8,7 +8,13 @@ import {
   PLAN_SCHEMA, buildPlanInstruction,
   SUPP_SCHEMA, buildSuppInstruction,
   RECIPE_SCHEMA, buildRecipeInstruction,
+  LAB_SCHEMA, LAB_INSTRUCTION,
 } from './data.js';
+
+// Shared system prompt with the user's current profile, UC mode, and merged blood labs.
+function currentSystem() {
+  return buildSystemPrompt(store.getProfile(), store.getMode(), store.getLabMarkers());
+}
 
 const ENDPOINT = 'https://api.anthropic.com/v1/messages';
 
@@ -99,12 +105,10 @@ export function fileToScaledDataUrl(file, maxEdge = 1024) {
 export async function scanProduct(dataUrl) {
   const [, meta, b64] = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/) || [];
   if (!b64) throw new Error('Invalid image.');
-  const profile = store.getProfile();
-  const mode = store.getMode();
 
   const { text } = await callClaude({
     model: MODELS.scan,
-    system: buildSystemPrompt(profile, mode),
+    system: currentSystem(),
     schema: SCAN_SCHEMA,
     max_tokens: 1024,
     thinking: false,
@@ -120,11 +124,9 @@ export async function scanProduct(dataUrl) {
 }
 
 export async function planDay(extra) {
-  const profile = store.getProfile();
-  const mode = store.getMode();
   const { text } = await callClaude({
     model: MODELS.plan,
-    system: buildSystemPrompt(profile, mode),
+    system: currentSystem(),
     schema: PLAN_SCHEMA,
     max_tokens: 8192, // room for adaptive-thinking tokens + the full day's JSON
     thinking: true,
@@ -134,11 +136,9 @@ export async function planDay(extra) {
 }
 
 export async function analyzeSupplement(brand, product, ingredients) {
-  const profile = store.getProfile();
-  const mode = store.getMode();
   const { text } = await callClaude({
     model: MODELS.plan,
-    system: buildSystemPrompt(profile, mode),
+    system: currentSystem(),
     schema: SUPP_SCHEMA,
     max_tokens: 3072, // thinking tokens + JSON
     thinking: true,
@@ -148,15 +148,53 @@ export async function analyzeSupplement(brand, product, ingredients) {
 }
 
 export async function analyzeRecipe(recipeText) {
-  const profile = store.getProfile();
-  const mode = store.getMode();
   const { text } = await callClaude({
     model: MODELS.plan,
-    system: buildSystemPrompt(profile, mode),
+    system: currentSystem(),
     schema: RECIPE_SCHEMA,
     max_tokens: 4096, // thinking tokens + JSON
     thinking: true,
     messages: [{ role: 'user', content: buildRecipeInstruction(recipeText) }],
+  });
+  return parseJson(text);
+}
+
+// Read any file as base64 (no data-URL prefix, no newlines — required for the API).
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const s = String(reader.result || '');
+      const comma = s.indexOf(',');
+      resolve(comma >= 0 ? s.slice(comma + 1) : s);
+    };
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Send a lab-report PDF to Claude and get structured markers back.
+export async function extractLabs(file) {
+  if (file.type && file.type !== 'application/pdf') {
+    throw new Error('Please upload a PDF lab report.');
+  }
+  if (file.size > 30 * 1024 * 1024) {
+    throw new Error('PDF is too large (max ~30 MB).');
+  }
+  const data = await fileToBase64(file);
+  const { text } = await callClaude({
+    model: MODELS.plan,
+    system: 'You extract structured data from medical laboratory report PDFs accurately. Output only the requested JSON.',
+    schema: LAB_SCHEMA,
+    max_tokens: 8192,
+    thinking: false,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
+        { type: 'text', text: LAB_INSTRUCTION },
+      ],
+    }],
   });
   return parseJson(text);
 }

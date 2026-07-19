@@ -10,7 +10,15 @@ const KEYS = {
   mode: 'ce.mode', // 'flare' | 'remission'
   scans: 'ce.scans', // recent scan history
   supps: 'ce.supps', // saved supplement stack
+  labs: 'ce.labs', // merged blood-lab markers + upload history
 };
+
+// Missing/invalid dates sort as oldest so a dated value always beats an undated one.
+function labTime(d) {
+  if (!d) return -Infinity;
+  const t = Date.parse(d);
+  return isNaN(t) ? -Infinity : t;
+}
 
 function read(key, fallback) {
   try {
@@ -55,4 +63,47 @@ export const store = {
   removeSupp(id) {
     write(KEYS.supps, read(KEYS.supps, []).filter((s) => s.id !== id));
   },
+
+  // Blood labs: { markers: { key: {name,value,unit,reference_range,flag,category,date,at} }, uploads: [] }
+  getLabs: () => read(KEYS.labs, { markers: {}, uploads: [] }),
+  getLabMarkers() {
+    return Object.values(read(KEYS.labs, { markers: {}, uploads: [] }).markers);
+  },
+  // Merge an extraction: keep the most RECENT value per marker (by date, then upload time).
+  mergeLabResult(extraction, filename) {
+    const labs = read(KEYS.labs, { markers: {}, uploads: [] });
+    const uploadAt = Date.now();
+    const reportDate = extraction.lab_date || '';
+    let added = 0, updated = 0, kept = 0;
+
+    for (const m of extraction.markers || []) {
+      const key = (m.name || '').trim().toLowerCase();
+      if (!key) continue;
+      const eff = m.date || reportDate || '';
+      const prev = labs.markers[key];
+      const isNewer = !prev
+        || labTime(eff) > labTime(prev.date)
+        || (labTime(eff) === labTime(prev.date) && uploadAt >= (prev.at || 0));
+      if (isNewer) {
+        if (prev) updated++; else added++;
+        labs.markers[key] = {
+          name: m.name, value: m.value, unit: m.unit,
+          reference_range: m.reference_range, flag: m.flag,
+          category: m.category, date: eff, at: uploadAt,
+        };
+      } else {
+        kept++;
+      }
+    }
+
+    labs.uploads.unshift({
+      at: uploadAt, lab_date: reportDate, filename: filename || '',
+      summary: extraction.summary || '', count: (extraction.markers || []).length,
+      added, updated, kept,
+    });
+    labs.uploads = labs.uploads.slice(0, 12);
+    write(KEYS.labs, labs);
+    return { added, updated, kept };
+  },
+  clearLabs: () => write(KEYS.labs, { markers: {}, uploads: [] }),
 };

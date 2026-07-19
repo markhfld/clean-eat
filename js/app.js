@@ -2,7 +2,7 @@
 
 import { store } from './store.js';
 import { FOODS, RULES } from './data.js';
-import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, analyzeRecipe } from './api.js';
+import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, analyzeRecipe, extractLabs } from './api.js';
 
 const appEl = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
@@ -19,6 +19,7 @@ const state = {
   scan: { dataUrl: null, result: null, loading: false, error: '' },
   recipe: { text: '', result: null, loading: false, error: '' },
   supp: { brand: '', product: '', ingredients: '', loading: false, error: '' },
+  labs: { loading: false, error: '' },
   plan: { extra: '', result: null, loading: false, error: '' },
 };
 
@@ -367,6 +368,61 @@ function renderFoods() {
 }
 
 // ================= PROFILE =================
+function labMarkersHtml(markers) {
+  const order = { critical: 0, high: 1, low: 1, unknown: 2, normal: 3 };
+  const sorted = [...markers].sort((a, b) => (order[a.flag] ?? 3) - (order[b.flag] ?? 3));
+  const dot = (f) => (f === 'normal' ? 'both' : f === 'unknown' ? 'remission' : 'caution');
+  const rows = sorted.map((m) => `
+    <div class="food">
+      <span class="dot ${dot(m.flag)}"></span>
+      <div style="flex:1">
+        <div><b>${esc(m.name)}</b> ${esc(m.value)}${m.unit ? ' ' + esc(m.unit) : ''} ${m.flag && m.flag !== 'normal' ? `<span class="flag">${esc(m.flag)}</span>` : ''}</div>
+        <div class="fmeta">${m.reference_range ? `ref ${esc(m.reference_range)} · ` : ''}${esc(m.category || '')}${m.date ? ` · ${esc(m.date)}` : ''}</div>
+      </div>
+    </div>`).join('');
+  return `<div style="margin-top:12px">${rows}</div>`;
+}
+
+function labsCardHtml() {
+  const l = state.labs;
+  const labs = store.getLabs();
+  const markers = Object.values(labs.markers);
+  const last = labs.uploads[0];
+  const body = markers.length
+    ? labMarkersHtml(markers)
+    : '<p class="note">No labs yet. Upload a PDF to personalise every recommendation to your bloodwork.</p>';
+  return `
+    <div class="card">
+      <h2 style="margin-top:0">🩸 Blood labs</h2>
+      <p class="note">Upload your latest lab report (PDF). Markers are stored and merged — the newest value per marker is kept and used across Plan, Check &amp; Stack. The PDF is sent to Claude to read it; only the extracted markers are saved on this device.</p>
+      <input id="labInput" type="file" accept="application/pdf,.pdf" class="hidden" />
+      <button class="btn secondary" id="labUploadBtn" ${l.loading ? 'disabled' : ''}>${l.loading ? '<span class="spinner"></span> Reading report…' : '📄 Upload lab PDF'}</button>
+      ${l.error ? `<div class="error">${esc(l.error)}</div>` : ''}
+      ${last ? `<p class="note" style="margin-top:10px">Last upload: ${new Date(last.at).toLocaleDateString()}${last.lab_date ? ` · report dated ${esc(last.lab_date)}` : ''} · +${last.added} new, ${last.updated} updated, ${last.kept} kept.${last.summary ? '<br>' + esc(last.summary) : ''}</p>` : ''}
+      ${body}
+      ${markers.length ? `<button class="btn secondary" id="clearLabs">Clear lab data</button>` : ''}
+    </div>`;
+}
+
+async function runLab(file) {
+  if (!file) return;
+  const l = state.labs;
+  l.loading = true; l.error = ''; renderProfile();
+  try {
+    const extraction = await extractLabs(file);
+    if (!extraction.markers || !extraction.markers.length) {
+      l.error = extraction.summary || 'No lab markers found in that PDF.';
+    } else {
+      store.mergeLabResult(extraction, file.name);
+    }
+  } catch (e) {
+    l.error = e.message;
+  } finally {
+    l.loading = false;
+    renderProfile();
+  }
+}
+
 function renderProfile() {
   const p = store.getProfile();
   const hasKey = !!store.getApiKey();
@@ -396,6 +452,8 @@ function renderProfile() {
       <textarea id="triggers" placeholder="e.g. sweetcorn, raw onion, whole milk">${esc(p.triggers)}</textarea>
     </div>
 
+    ${labsCardHtml()}
+
     <div class="card">
       <h2 style="margin-top:0">Daily targets</h2>
       <div class="row">
@@ -415,6 +473,14 @@ function renderProfile() {
     store.setApiKey(document.getElementById('apiKey').value);
     document.getElementById('keyStatus').textContent = '🔑 Key saved.';
   });
+  const labInput = document.getElementById('labInput');
+  const labBtn = document.getElementById('labUploadBtn');
+  if (labBtn && labInput) {
+    labBtn.addEventListener('click', () => labInput.click());
+    labInput.addEventListener('change', (e) => runLab(e.target.files?.[0]));
+  }
+  const clearLabsBtn = document.getElementById('clearLabs');
+  if (clearLabsBtn) clearLabsBtn.addEventListener('click', () => { store.clearLabs(); renderProfile(); });
   document.getElementById('testKey').addEventListener('click', async () => {
     const st = document.getElementById('keyStatus');
     store.setApiKey(document.getElementById('apiKey').value);
