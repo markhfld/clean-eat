@@ -5,6 +5,7 @@ import { FOODS, RULES } from './data.js';
 import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, recommendSupplements, analyzeRecipe, extractLabs } from './api.js';
 import { initSync, setupSync, syncNow, pull, syncConfigured } from './sync.js';
 
+const APP_VERSION = 'v14';
 const appEl = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
 const modeToggle = document.getElementById('modeToggle');
@@ -739,6 +740,8 @@ function renderProfile() {
     </div>
 
     ${syncCardHtml()}
+
+    <p class="note" style="text-align:center;opacity:.6;margin-top:18px">Clean Eat · ${APP_VERSION}</p>
   `;
 
   wireSyncCard();
@@ -803,5 +806,16 @@ initSync(render);
 render();
 if (syncConfigured()) syncNow().catch(() => {}); // merge + push on launch
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  // Auto-reload once when a new service worker takes control (so fresh code applies).
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      reg.update().catch(() => {});
+    }).catch(() => {});
+  });
 }
