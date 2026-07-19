@@ -49,6 +49,12 @@ async function callClaude({ model, system, messages, max_tokens = 2048, schema, 
   }
 
   const data = await res.json();
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error('The answer got cut off before it finished. Try again (or simplify the request).');
+  }
+  if (data.stop_reason === 'refusal') {
+    throw new Error('The model declined this request. Try rephrasing.');
+  }
   const text = (data.content || [])
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
@@ -120,7 +126,7 @@ export async function planDay(session, extra) {
     model: MODELS.plan,
     system: buildSystemPrompt(profile, mode),
     schema: PLAN_SCHEMA,
-    max_tokens: 4096,
+    max_tokens: 8192, // room for adaptive-thinking tokens + the full day's JSON
     thinking: true,
     messages: [{ role: 'user', content: buildPlanInstruction(session, extra) }],
   });
@@ -134,7 +140,7 @@ export async function analyzeSupplement(brand, product, ingredients) {
     model: MODELS.plan,
     system: buildSystemPrompt(profile, mode),
     schema: SUPP_SCHEMA,
-    max_tokens: 1500,
+    max_tokens: 3072, // thinking tokens + JSON
     thinking: true,
     messages: [{ role: 'user', content: buildSuppInstruction(brand, product, ingredients) }],
   });
@@ -148,7 +154,7 @@ export async function analyzeRecipe(recipeText) {
     model: MODELS.plan,
     system: buildSystemPrompt(profile, mode),
     schema: RECIPE_SCHEMA,
-    max_tokens: 2000,
+    max_tokens: 4096, // thinking tokens + JSON
     thinking: true,
     messages: [{ role: 'user', content: buildRecipeInstruction(recipeText) }],
   });
