@@ -226,6 +226,7 @@ function recipeResultHtml(r) {
         <div class="macro" style="grid-column: span 2"><b style="font-size:14px">${esc(r.verdict)}</b><span>overall fit</span></div>
       </div>
       <h2>Gut / UC</h2><p class="note">${esc(r.uc_assessment)}</p>
+      ${r.liver_assessment ? `<h2>Liver 🫀</h2><p class="note">${esc(r.liver_assessment)}</p>` : ''}
       <h2>Muscle</h2><p class="note">${esc(r.muscle_assessment)}</p>
       ${(r.improvements || []).length ? `<h2>Improvements</h2><ul class="note">${r.improvements.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
       ${swaps ? `<h2>Swaps</h2><ul class="note">${swaps}</ul>` : ''}
@@ -258,6 +259,7 @@ function scanResultHtml(r) {
       <p class="note" style="margin-top:8px">${esc(r.verdict_reason)}</p>
       <div class="flags">${flags}</div>
       <h2>Gut / UC</h2><p class="note">${esc(r.uc_assessment)}</p>
+      ${r.liver_assessment ? `<h2>Liver 🫀</h2><p class="note">${esc(r.liver_assessment)}</p>` : ''}
       <h2>Muscle</h2><p class="note">${esc(r.muscle_assessment)} ${r.protein_per_100g_g ? `<b>(~${num(r.protein_per_100g_g)}g protein/100g)</b>` : ''}</p>
       ${r.better_alternative ? `<h2>Better pick</h2><p class="note">➡️ ${esc(r.better_alternative)}</p>` : ''}
     </div>`;
@@ -400,6 +402,7 @@ function suppCardHtml(entry) {
       <p class="note" style="margin-top:6px">${esc(r.category || '')} — ${esc(r.verdict_reason || '')}</p>
       ${inp.dosage ? `<p class="note">Your dosage: <b>${esc(inp.dosage)}</b></p>` : ''}
       <h2>Gut / UC</h2><p class="note">${esc(r.uc_assessment || '')}</p>
+      ${r.liver_assessment ? `<h2>Liver 🫀</h2><p class="note">${esc(r.liver_assessment)}</p>` : ''}
       <h2>Muscle</h2><p class="note">${esc(r.muscle_assessment || '')}</p>
       ${flags ? `<h2>Flagged ingredients ⚠️</h2><ul class="note">${flags}</ul>` : ''}
       ${r.dosing_tip ? `<h2>Dosing</h2><p class="note">${esc(r.dosing_tip)}</p>` : ''}
@@ -488,6 +491,10 @@ function renderFoods() {
       <h2 style="margin-top:0">${mode === 'flare' ? '🔥 Flare' : '🌿 Remission'} rules</h2>
       <ul class="note">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
     </div>
+    <div class="card">
+      <h2 style="margin-top:0">🫀 Liver / hepatic-load rules (always on)</h2>
+      <ul class="note">${RULES.hepatic.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+    </div>
     ${sections}
   `;
 }
@@ -573,6 +580,8 @@ function renderProfile() {
         <div><label>Height (cm)</label><input id="heightCm" type="number" value="${p.heightCm}" /></div>
         <div><label>Age</label><input id="age" type="number" value="${p.age}" /></div>
       </div>
+      <label>Other conditions & medications — always respected (private, on-device)</label>
+      <textarea id="constraints" placeholder="e.g. Elevated liver enzymes ~10y, cause unclear, MRI inconclusive; suspected mesalazine hepatotoxicity — minimise hepatic load. Taking mesalazine for UC.">${esc(p.constraints || '')}</textarea>
       <label>Known personal trigger foods (comma separated)</label>
       <textarea id="triggers" placeholder="e.g. sweetcorn, raw onion, whole milk">${esc(p.triggers)}</textarea>
     </div>
@@ -619,6 +628,7 @@ function renderProfile() {
     np.heightCm = +document.getElementById('heightCm').value || np.heightCm;
     np.age = +document.getElementById('age').value || np.age;
     np.triggers = document.getElementById('triggers').value.trim();
+    np.constraints = document.getElementById('constraints').value.trim();
     np.targets = {
       kcal: +document.getElementById('tk').value || np.targets.kcal,
       protein: +document.getElementById('tp').value || np.targets.protein,

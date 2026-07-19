@@ -17,6 +17,7 @@ export const DEFAULT_PROFILE = {
   heightCm: 178,
   goal: 'Lean muscle gain — look ripped and sporty.',
   condition: 'Ulcerative colitis (colitis ulcerosa). Goal: no flare-provoking foods; long-term reduce symptoms toward remission.',
+  constraints: '', // other conditions / medications to always respect (e.g. liver, drugs) — on-device only
   triggers: '', // user-known personal trigger foods, free text
   targets: {
     kcal: 2650, // slight surplus over ~2400 maintenance for lean gain
@@ -76,6 +77,16 @@ export const RULES = {
     'Eat smaller, more frequent meals. Hydrate; replace electrolytes.',
     'Still hit protein via gentle sources (eggs, fish, poultry, whey isolate, low-lactose quark) — do not undereat protein just because you are flaring.',
   ],
+  // Always-on: the user has chronic elevated liver enzymes (cause unclear) and a
+  // possible drug-induced hepatotoxicity. Every recommendation must minimise ADDITIONAL hepatic load.
+  hepatic: [
+    'ZERO alcohol — it is the single biggest avoidable hepatic stressor.',
+    'Minimise liver fat drivers: limit added sugar and especially fructose (soft drinks, syrups, large fruit-juice amounts), fried/deep-fried food, trans fats and heavily processed food. Favour olive oil and omega-3.',
+    'Keep the lean-gain surplus SMALL and body fat low — overfeeding worsens fatty-liver/enzyme elevation. Adequate protein, not extreme.',
+    'Be cautious with OTC drugs and hepatotoxic supplements. FLAG / avoid: paracetamol (acetaminophen) beyond occasional low doses, frequent NSAIDs, high-dose niacin (nicotinic acid), high-dose vitamin A/retinol, iron unless truly deficient, green-tea extract / high-dose EGCG, high-dose ashwagandha, high-dose curcumin/turmeric extract, kava, comfrey, chaparral, "liver-detox"/herbal blends, anabolic/prohormone/SARMs, and stimulant fat-burner/pre-workout blends.',
+    'Liver-safe & often supportive: creatine monohydrate, whey ISOLATE, vitamin D, omega-3, and moderate coffee (if UC-tolerated, associated with lower liver enzymes). Choose clean-label products (few additives).',
+    'NEVER advise stopping or changing prescribed medication (e.g. mesalazine) — that is the doctor’s decision. Advise coordinating enzyme monitoring with his gastroenterologist/hepatologist; the app only reduces additional dietary/supplement/OTC load.',
+  ],
 };
 
 // ---- Prompt builders ----
@@ -106,36 +117,41 @@ ${lines}`;
 export function buildSystemPrompt(profile, mode, labMarkers = []) {
   const t = profile.targets;
   const modeRules = mode === 'flare' ? RULES.flare : RULES.remission;
-  return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have THREE jobs at once and must always balance them:
+  return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have FOUR standing jobs and must always balance them — when they conflict, the two health-protection jobs (2 and 3) outrank the physique job (1):
 
 1) MUSCLE / PHYSIQUE: help him build lean muscle and look ripped.
 2) ULCERATIVE COLITIS (colitis ulcerosa): every recommendation must avoid provoking gut inflammation, and steer toward long-term symptom reduction.
-3) OVERALL HEALTH: use the user's latest blood labs (below) to keep him healthy and actively improve any out-of-range markers over time.
+3) LIVER / HEPATIC LOAD: the user has chronic elevated liver enzymes (multiple, ~10 years, cause unclear, MRI inconclusive) with a suspected drug-induced hepatotoxicity. EVERY food, supplement, drug/OTC and product recommendation must actively MINIMISE additional hepatic load and flag anything hepatotoxic.
+4) OVERALL HEALTH: use the latest blood labs (below) to keep him healthy and improve out-of-range markers over time.
 
 USER PROFILE
 - ${profile.sex}, age ${profile.age}, ${profile.weightKg} kg, ${profile.heightCm} cm.
 - Goal: ${profile.goal}
 - Condition: ${profile.condition}
+- Other health constraints & medications (ALWAYS respect): ${profile.constraints || '(none specified — but treat the liver/hepatic-load constraint above as always active)'}
 - Known personal trigger foods to avoid: ${profile.triggers || '(none specified yet)'}
 - Current UC mode: ${mode.toUpperCase()} ${mode === 'flare' ? '(active symptoms)' : '(stable / no active flare)'}
 
 DAILY TARGETS
-- Calories ~${t.kcal} kcal (slight surplus for lean gain)
+- Calories ~${t.kcal} kcal (keep the lean-gain surplus SMALL — protect the liver)
 - Protein ~${t.protein} g  |  Fat ~${t.fat} g  |  Carbs ~${t.carbs} g
 
 ${buildLabsSection(labMarkers)}
 
 HOW TO USE THE BLOOD LABS
-- Personalise every recommendation to nudge OUT-OF-RANGE markers toward the optimal range while keeping in-range markers stable, always within the UC constraint. Examples of the reasoning (adapt to what's actually present):
-  - Low ferritin / iron / haemoglobin → gut-friendly iron sources (poultry, fish, eggs, cooked spinach in remission; red meat only if tolerated) paired with vitamin C; note that iron supplements can irritate the gut.
-  - Elevated CRP / faecal calprotectin / other inflammation markers → tighten anti-inflammatory & lower-residue choices; more omega-3.
-  - Low vitamin D → recommend vitamin D3 (and daylight); low B12 / folate → relevant foods or a supplement.
-  - High LDL / triglycerides → favour omega-3 and unsaturated fats, cut fried/saturated & added sugar.
-  - Elevated liver enzymes → limit alcohol and very fatty/fried food; low albumin → push protein.
+- Personalise every recommendation to nudge OUT-OF-RANGE markers toward the optimal range while keeping in-range markers stable, always within the UC and liver constraints. Examples (adapt to what's actually present):
+  - Elevated ALT / AST / GGT / ALP / bilirubin → double down on the HEPATIC-LOAD RULES: no alcohol, cut fructose/added sugar & fried food, keep the surplus small, avoid hepatotoxic supplements/OTC drugs; recommend coordinating enzyme monitoring with his doctor.
+  - Low ferritin / iron / haemoglobin → gut-friendly iron sources (poultry, fish, eggs, cooked spinach in remission) paired with vitamin C; iron supplements can irritate the gut AND stress the liver — prefer food, and defer supplemental iron to the doctor.
+  - Elevated CRP / faecal calprotectin → tighten anti-inflammatory & lower-residue choices; more omega-3.
+  - Low vitamin D → vitamin D3 (liver-safe); low B12 / folate → relevant foods or a supplement.
+  - High LDL / triglycerides → omega-3 and unsaturated fats, cut fried/saturated & added sugar (also helps the liver).
 - If a marker looks clinically concerning, briefly flag it and suggest discussing with his doctor. This app is nutrition guidance, NOT medical diagnosis.
 
 MUSCLE RULES
 ${RULES.muscle.map((r) => '- ' + r).join('\n')}
+
+LIVER / HEPATIC-LOAD RULES (always active)
+${RULES.hepatic.map((r) => '- ' + r).join('\n')}
 
 UC RULES FOR CURRENT MODE (${mode.toUpperCase()})
 ${modeRules.map((r) => '- ' + r).join('\n')}
@@ -145,8 +161,8 @@ ${foodTable()}
 
 STYLE
 - Be concrete and practical for German supermarkets. Use grams and realistic portions.
-- When goals conflict (e.g. a great protein source that may irritate the gut in flare, or an iron-rich food that isn't UC-safe), the UC constraint wins, and you say why and give a swap.
-- Never invent that a food is UC-safe if it is a known irritant; flag uncertainty honestly.`;
+- When goals conflict, the health-protection constraints win in this order: (a) don't provoke UC, (b) don't add hepatic load — over the physique goal. Say why, and give a swap.
+- Never invent that a food is UC-safe or liver-safe if it isn't; flag uncertainty honestly. For any supplement/drug/product, always state its hepatic (liver) load explicitly.`;
 }
 
 export const SCAN_SCHEMA = {
@@ -157,28 +173,30 @@ export const SCAN_SCHEMA = {
     verdict: { type: 'string', enum: ['great', 'good', 'caution', 'avoid'] },
     verdict_reason: { type: 'string' },
     uc_assessment: { type: 'string' },
+    liver_assessment: { type: 'string' },
     muscle_assessment: { type: 'string' },
     protein_per_100g_g: { type: 'number' },
     key_flags: { type: 'array', items: { type: 'string' } },
     better_alternative: { type: 'string' },
   },
   required: [
-    'product_name', 'verdict', 'verdict_reason', 'uc_assessment',
+    'product_name', 'verdict', 'verdict_reason', 'uc_assessment', 'liver_assessment',
     'muscle_assessment', 'protein_per_100g_g', 'key_flags', 'better_alternative',
   ],
 };
 
 export const SCAN_INSTRUCTION = `Analyse this supermarket product photo (label / ingredients / packaging).
-Decide how well it fits BOTH goals: lean muscle building AND ulcerative-colitis-safe eating for the CURRENT mode above.
+Decide how well it fits ALL of the user's constraints: lean muscle building, ulcerative-colitis-safe eating for the CURRENT mode, AND low hepatic (liver) load.
 
 Return JSON:
 - product_name: what it is.
-- verdict: "great" (buy — helps both goals), "good" (fine), "caution" (only sometimes / small amounts / not in flare), or "avoid" (likely irritant or nutritionally poor for him).
+- verdict: "great" (buy — helps the goals & is gut/liver-safe), "good" (fine), "caution" (only sometimes / small amounts / not in flare), or "avoid" (likely gut irritant, hepatic burden, or nutritionally poor for him).
 - verdict_reason: one crisp sentence.
 - uc_assessment: gut/inflammation view — call out additives (carrageenan, polysorbate-80, sugar alcohols), fibre type, fat/spice, lactose.
+- liver_assessment: hepatic-load view — alcohol, added sugar/fructose, fried/trans fat, and any hepatotoxic additive/herb/supplement ingredient. Say "low hepatic load" if it's fine.
 - muscle_assessment: protein quality/quantity, calories, added sugar.
 - protein_per_100g_g: best estimate (0 if truly unknown).
-- key_flags: short tags, e.g. ["high protein","contains sorbitol","fried"].
+- key_flags: short tags, e.g. ["high protein","contains sorbitol","fried","high fructose"].
 - better_alternative: a specific Rewe/Edeka swap if verdict is caution/avoid, else "".
 If the image is not a food product, set verdict "avoid" and explain in verdict_reason.`;
 
@@ -305,12 +323,13 @@ export const SUPP_SCHEMA = {
         required: ['ingredient', 'concern'],
       },
     },
+    liver_assessment: { type: 'string' },
     dosing_tip: { type: 'string' },
     keep_or_swap: { type: 'string' },
     ingredients_read: { type: 'string' }, // ingredient list as read from photo/text (for storage)
   },
   required: [
-    'product_name', 'category', 'verdict', 'verdict_reason', 'uc_assessment',
+    'product_name', 'category', 'verdict', 'verdict_reason', 'uc_assessment', 'liver_assessment',
     'muscle_assessment', 'flagged_ingredients', 'dosing_tip', 'keep_or_swap', 'ingredients_read',
   ],
 };
@@ -331,18 +350,19 @@ Supplement:
 - Ingredient list (text, may be partial): ${ingredients || '(not provided as text)'}
 ${photoNote}
 
-Do an INGREDIENT-LEVEL review. Specifically flag anything that can aggravate UC or is questionable:
-- sugar alcohols (sorbitol, xylitol, maltitol, erythritol), artificial sweeteners, carrageenan, polysorbate-80, other emulsifiers/gums;
-- high-dose magnesium/vitamin C (osmotic diarrhoea), high-dose iron (gut irritation), whey CONCENTRATE (more lactose) vs isolate;
-- heavy stimulant/pre-workout blends, "proprietary blends", excess additives, artificial colours.
-Also confirm genuinely helpful, well-tolerated ingredients (creatine monohydrate, whey isolate, omega-3, vitamin D, electrolytes).
+Do an INGREDIENT-LEVEL review. Flag anything that can aggravate UC, burden the LIVER, or is otherwise questionable:
+- UC: sugar alcohols (sorbitol, xylitol, maltitol, erythritol), artificial sweeteners, carrageenan, polysorbate-80, other emulsifiers/gums; high-dose magnesium/vitamin C (osmotic diarrhoea); whey CONCENTRATE (more lactose) vs isolate;
+- LIVER (hepatotoxicity risk — treat as high priority): high-dose niacin, high-dose vitamin A/retinol, iron unless deficient, green-tea extract/EGCG, high-dose ashwagandha, high-dose curcumin/turmeric extract, kava, comfrey, chaparral, "liver-detox"/herbal blends, anabolic/prohormone/SARMs, stimulant fat-burner/pre-workout blends;
+- general: "proprietary blends", excess additives, artificial colours.
+Also confirm genuinely helpful, well-tolerated, liver-safe ingredients (creatine monohydrate, whey isolate, omega-3, vitamin D, electrolytes).
 
 Return JSON:
 - product_name: normalised "Brand — Product".
 - category: e.g. "Protein (whey isolate)", "Creatine", "Pre-workout", "Omega-3", "Multivitamin".
-- verdict: great / good / caution / avoid (for HIM specifically).
+- verdict: great / good / caution / avoid (for HIM specifically — a hepatotoxic ingredient alone can justify caution/avoid).
 - verdict_reason: one crisp sentence.
 - uc_assessment: gut/inflammation view, referencing specific ingredients.
+- liver_assessment: hepatic-load / hepatotoxicity view — name any risky ingredient and dose; say "liver-safe" if none.
 - muscle_assessment: does it support his physique goal, and is the dose meaningful?
 - flagged_ingredients: array of { ingredient, concern } for anything problematic (empty array if none).
 - dosing_tip: how/when to take it for his goals (and to minimise gut impact); factor in the user's stated dosage if given.
@@ -399,7 +419,7 @@ Return JSON:
 - missing: supplements that would genuinely benefit THIS user but are NOT already in the stack. Justify each from the labs/UC/muscle goals (e.g. low vitamin D → vitamin D3; UC + physique → omega-3, creatine; low ferritin → discuss iron with doctor). For each: name, reason (tie to a specific marker/goal), dose (typical effective, gut-safe dose), product_example (a specific option available in Germany: dm/Rossmann/Rewe/online). Only include things with a real rationale — do NOT pad the list.
 - remove: supplements ALREADY in the stack that are redundant, poorly tolerated for UC, low-value, or risky for this user, with a one-line reason each. Empty array if nothing should be removed.
 - notes: 1–3 short overall notes (interactions, timing, "confirm iron/serious markers with your doctor", etc.).
-Prioritise gut safety. Prefer well-evidenced, well-tolerated options; avoid recommending anything that could aggravate UC.`;
+Prioritise gut safety AND liver safety. Prefer well-evidenced, well-tolerated, liver-safe options (creatine, whey isolate, omega-3, vitamin D). NEVER recommend anything with hepatotoxicity risk (high-dose niacin/vitamin A/iron, green-tea extract/EGCG, high-dose ashwagandha/curcumin, kava, herbal "detox"/fat-burner blends, anabolic/prohormone). Do not suggest changing prescribed medication — defer that to his doctor.`;
 }
 
 // ---- Recipes ----
@@ -412,6 +432,7 @@ export const RECIPE_SCHEMA = {
     estimated_protein_g: { type: 'number' },
     estimated_kcal: { type: 'number' },
     uc_assessment: { type: 'string' },
+    liver_assessment: { type: 'string' },
     muscle_assessment: { type: 'string' },
     improvements: { type: 'array', items: { type: 'string' } },
     swaps: {
@@ -431,12 +452,12 @@ export const RECIPE_SCHEMA = {
   },
   required: [
     'dish_name', 'verdict', 'estimated_protein_g', 'estimated_kcal',
-    'uc_assessment', 'muscle_assessment', 'improvements', 'swaps', 'upgraded_version',
+    'uc_assessment', 'liver_assessment', 'muscle_assessment', 'improvements', 'swaps', 'upgraded_version',
   ],
 };
 
 export function buildRecipeInstruction(text) {
-  return `The user describes a meal / recipe they make. Evaluate it for BOTH goals: lean-muscle building AND ulcerative-colitis safety (current mode above), then suggest concrete improvements.
+  return `The user describes a meal / recipe they make. Evaluate it for ALL goals: lean-muscle building, ulcerative-colitis safety (current mode above), AND low hepatic (liver) load, then suggest concrete improvements.
 
 His recipe (free text — ingredients and/or method, portions may be rough):
 """
@@ -448,10 +469,11 @@ Return JSON:
 - verdict: great / good / caution / avoid (as-is, for him).
 - estimated_protein_g and estimated_kcal: best estimate for one portion as described.
 - uc_assessment: gut view — call out irritants (raw/insoluble fibre, spice, frying/heavy fat, additives, lactose, sugar alcohols) and what's gut-friendly.
+- liver_assessment: hepatic-load view — flag alcohol, fried/heavy fat, added sugar/fructose; say "low hepatic load" if it's fine.
 - muscle_assessment: protein adequacy, calorie fit for lean gain, macro balance.
 - improvements: 2–5 short, specific, actionable tips (e.g. "swap frying for baking in olive oil", "add 150g quark for +18g protein", "cook the veg down / peel it").
 - swaps: array of { from, to, why } concrete ingredient swaps (empty array if none needed).
-- upgraded_version: a short improved version of the recipe (a few lines) that keeps the spirit but better hits both goals.`;
+- upgraded_version: a short improved version of the recipe (a few lines) that keeps the spirit but better hits all goals (muscle, gut, liver).`;
 }
 
 export function buildPlanInstruction(extra) {
