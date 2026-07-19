@@ -1,0 +1,6 @@
+# OS
+.DS_Store
+
+# Personal training data — kept local, not published to the public Pages site.
+# (The app reads TRAINING_WEEK from js/data.js; it does not need these files.)
+gym-plan/

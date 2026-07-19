@@ -1,0 +1,19 @@
+{
+  "name": "Clean Eat — Nutrition Assistant",
+  "short_name": "Clean Eat",
+  "description": "Personal nutrition coach for lean muscle + ulcerative-colitis-safe eating, tuned to Rewe/Edeka.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#f4f6f9",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
