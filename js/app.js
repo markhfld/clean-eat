@@ -2,7 +2,7 @@
 
 import { store } from './store.js';
 import { FOODS, RULES } from './data.js';
-import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, analyzeRecipe, extractLabs } from './api.js';
+import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, recommendSupplements, analyzeRecipe, extractLabs } from './api.js';
 
 const appEl = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
@@ -18,7 +18,8 @@ const state = {
   checkMode: 'product', // 'product' | 'recipe'
   scan: { dataUrl: null, result: null, loading: false, error: '' },
   recipe: { text: '', result: null, loading: false, error: '' },
-  supp: { brand: '', product: '', ingredients: '', loading: false, error: '' },
+  supp: { brand: '', product: '', dosage: '', ingredients: '', photoProduct: null, photoIngredients: null, editingId: null, loading: false, error: '' },
+  reco: { loading: false, error: '' },
   labs: { loading: false, error: '' },
   plan: { extra: '', result: null, loading: false, error: '' },
 };
@@ -274,22 +275,43 @@ function renderScanHistory() {
 function renderStack() {
   const s = state.supp;
   const saved = store.getSupps();
-  const list = saved.length ? saved.map(suppCardHtml).join('') : '<p class="note">No supplements saved yet. Add one above to check it against your goals.</p>';
+  const editing = !!s.editingId;
+  const list = saved.length ? saved.map(suppCardHtml).join('') : '<p class="note">No supplements saved yet. Add one below.</p>';
 
   appEl.innerHTML = `
     <h1>Supplement stack</h1>
-    <p class="sub">Add what you take → ingredient-level check for muscle fit & UC compatibility.</p>
+    <p class="sub">Ingredient-level check for muscle fit & UC compatibility, personalised to your labs.</p>
+
+    ${recoCardHtml()}
 
     <div class="card">
+      <h2 style="margin-top:0">${editing ? '✏️ Edit supplement' : '➕ Add a supplement'}</h2>
       <div class="row">
         <div><label>Brand</label><input id="suppBrand" placeholder="e.g. ESN" value="${esc(s.brand)}" /></div>
         <div><label>Product</label><input id="suppProduct" placeholder="e.g. Isoclear Whey Isolate" value="${esc(s.product)}" /></div>
       </div>
-      <label>Ingredient list (optional — paste from the label for the most accurate check)</label>
-      <textarea id="suppIngredients" placeholder="Whey protein isolate, emulsifier (sunflower lecithin), flavouring, sweeteners (sucralose)…">${esc(s.ingredients)}</textarea>
+      <label>Dosage you take (optional)</label>
+      <input id="suppDosage" placeholder="e.g. 30 g/day · 2 caps in the morning" value="${esc(s.dosage)}" />
+      <label>Ingredient list (optional — paste, or add a photo below)</label>
+      <textarea id="suppIngredients" placeholder="Whey protein isolate, emulsifier (sunflower lecithin), sweetener (sucralose)…">${esc(s.ingredients)}</textarea>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <input id="photoProdInput" type="file" accept="image/*" capture="environment" class="hidden" />
+          <button class="btn secondary" id="photoProdBtn" style="margin-top:0">📷 Product photo</button>
+          ${s.photoProduct ? `<img class="preview" src="${s.photoProduct}" />` : ''}
+        </div>
+        <div>
+          <input id="photoIngInput" type="file" accept="image/*" capture="environment" class="hidden" />
+          <button class="btn secondary" id="photoIngBtn" style="margin-top:0">📷 Ingredients photo</button>
+          ${s.photoIngredients ? `<img class="preview" src="${s.photoIngredients}" />` : ''}
+        </div>
+      </div>
+
       <button class="btn" id="suppBtn" ${s.loading ? 'disabled' : ''}>
-        ${s.loading ? '<span class="spinner"></span> Analysing…' : '💊 Analyse & add'}
+        ${s.loading ? '<span class="spinner"></span> Analysing…' : (editing ? '💾 Update & re-analyse' : '💊 Analyse & add')}
       </button>
+      ${editing ? '<button class="btn secondary" id="suppCancel">Cancel edit</button>' : ''}
       ${s.error ? `<div class="error">${esc(s.error)}</div>` : ''}
     </div>
 
@@ -297,20 +319,53 @@ function renderStack() {
     ${list}
   `;
 
-  document.getElementById('suppBrand').addEventListener('input', (e) => { s.brand = e.target.value; });
-  document.getElementById('suppProduct').addEventListener('input', (e) => { s.product = e.target.value; });
-  document.getElementById('suppIngredients').addEventListener('input', (e) => { s.ingredients = e.target.value; });
+  const bind = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener('input', (e) => { s[key] = e.target.value; }); };
+  bind('suppBrand', 'brand'); bind('suppProduct', 'product'); bind('suppDosage', 'dosage'); bind('suppIngredients', 'ingredients');
+  wireSuppPhoto('photoProdBtn', 'photoProdInput', 'photoProduct');
+  wireSuppPhoto('photoIngBtn', 'photoIngInput', 'photoIngredients');
   document.getElementById('suppBtn').addEventListener('click', runSupp);
+  const cancel = document.getElementById('suppCancel');
+  if (cancel) cancel.addEventListener('click', () => { resetSuppForm(); renderStack(); });
+  const recoBtn = document.getElementById('recoBtn');
+  if (recoBtn) recoBtn.addEventListener('click', runReco);
+}
+
+function wireSuppPhoto(btnId, inputId, key) {
+  const btn = document.getElementById(btnId);
+  const input = document.getElementById(inputId);
+  if (!btn || !input) return;
+  btn.addEventListener('click', () => input.click());
+  input.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try { state.supp[key] = await fileToScaledDataUrl(file); }
+    catch (err) { state.supp.error = err.message; }
+    renderStack();
+  });
+}
+
+function resetSuppForm() {
+  Object.assign(state.supp, {
+    brand: '', product: '', dosage: '', ingredients: '',
+    photoProduct: null, photoIngredients: null, editingId: null, error: '',
+  });
 }
 
 async function runSupp() {
   const s = state.supp;
-  if (!s.brand.trim() && !s.product.trim()) { s.error = 'Enter at least a brand or product name.'; renderStack(); return; }
+  const hasPhoto = s.photoProduct || s.photoIngredients;
+  if (!s.brand.trim() && !s.product.trim() && !hasPhoto) {
+    s.error = 'Add a name or a photo first.'; renderStack(); return;
+  }
   s.loading = true; s.error = ''; renderStack();
   try {
-    const result = await analyzeSupplement(s.brand, s.product, s.ingredients);
-    store.addSupp({ result, at: Date.now() });
-    s.brand = ''; s.product = ''; s.ingredients = '';
+    const input = { brand: s.brand, product: s.product, dosage: s.dosage, ingredients: s.ingredients };
+    const result = await analyzeSupplement(input, [s.photoProduct, s.photoIngredients]);
+    // Persist the ingredient text we now know (typed, or read from the photo) for future edits.
+    const storedInput = { ...input, ingredients: s.ingredients.trim() ? s.ingredients : (result.ingredients_read || '') };
+    if (s.editingId) store.updateSupp(s.editingId, { input: storedInput, result, at: Date.now() });
+    else store.addSupp({ input: storedInput, result, at: Date.now() });
+    resetSuppForm();
   } catch (e) {
     s.error = e.message;
   } finally {
@@ -319,23 +374,93 @@ async function runSupp() {
   }
 }
 
+function startEditSupp(id) {
+  const entry = store.getSupps().find((x) => x.id === id);
+  if (!entry) return;
+  const inp = entry.input || {};
+  Object.assign(state.supp, {
+    brand: inp.brand || '', product: inp.product || '', dosage: inp.dosage || '',
+    ingredients: inp.ingredients || '', photoProduct: null, photoIngredients: null,
+    editingId: id, error: '',
+  });
+  renderStack();
+  window.scrollTo(0, 0);
+}
+
 function suppCardHtml(entry) {
   const r = entry.result || {};
+  const inp = entry.input || {};
   const flags = (r.flagged_ingredients || []).map((f) => `<li><b>${esc(f.ingredient)}</b> — ${esc(f.concern)}</li>`).join('');
   return `
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h2 style="margin:0">${esc(r.product_name || 'Supplement')}</h2>
+        <h2 style="margin:0">${esc(r.product_name || inp.product || 'Supplement')}</h2>
         <span class="verdict ${esc(r.verdict)}">${esc(r.verdict)}</span>
       </div>
       <p class="note" style="margin-top:6px">${esc(r.category || '')} — ${esc(r.verdict_reason || '')}</p>
+      ${inp.dosage ? `<p class="note">Your dosage: <b>${esc(inp.dosage)}</b></p>` : ''}
       <h2>Gut / UC</h2><p class="note">${esc(r.uc_assessment || '')}</p>
       <h2>Muscle</h2><p class="note">${esc(r.muscle_assessment || '')}</p>
       ${flags ? `<h2>Flagged ingredients ⚠️</h2><ul class="note">${flags}</ul>` : ''}
       ${r.dosing_tip ? `<h2>Dosing</h2><p class="note">${esc(r.dosing_tip)}</p>` : ''}
       ${r.keep_or_swap ? `<h2>Keep or swap</h2><p class="note">${esc(r.keep_or_swap)}</p>` : ''}
-      <button class="btn secondary" data-remove-supp="${esc(entry.id)}">Remove</button>
+      <div class="row">
+        <button class="btn secondary" data-edit-supp="${esc(entry.id)}" style="margin-top:0">Edit</button>
+        <button class="btn secondary" data-remove-supp="${esc(entry.id)}" style="margin-top:0">Remove</button>
+      </div>
     </div>`;
+}
+
+function recoCardHtml() {
+  const rc = state.reco;
+  const reco = store.getSuppReco();
+  let body = '';
+  if (reco) {
+    const missing = reco.data.missing || [];
+    const remove = reco.data.remove || [];
+    const notes = reco.data.notes || [];
+    body = `
+      <p class="note" style="margin-top:6px">Based on your profile, blood labs & current stack · ${new Date(reco.at).toLocaleDateString()}</p>
+      <h2>✅ Missing — consider adding</h2>
+      ${missing.length
+        ? `<ul class="note">${missing.map((m) => `<li><b>${esc(m.name)}</b>${m.dose ? ` (${esc(m.dose)})` : ''} — ${esc(m.reason)}${m.product_example ? `<br><span class="fmeta">e.g. ${esc(m.product_example)}</span>` : ''}</li>`).join('')}</ul>`
+        : '<p class="note">Nothing important missing. 👍</p>'}
+      <h2>🗑️ Consider removing</h2>
+      ${remove.length
+        ? `<ul class="note">${remove.map((m) => `<li><b>${esc(m.name)}</b> — ${esc(m.reason)}</li>`).join('')}</ul>`
+        : '<p class="note">Nothing to remove.</p>'}
+      ${notes.length ? `<h2>Notes</h2><ul class="note">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    `;
+  }
+  return `
+    <div class="card">
+      <h2 style="margin-top:0">🔬 Recommended for you</h2>
+      ${reco ? '' : '<p class="note">Personalised picks from your profile, blood labs and current stack — what to add and what to drop.</p>'}
+      <button class="btn ${reco ? 'secondary' : ''}" id="recoBtn" ${rc.loading ? 'disabled' : ''}>
+        ${rc.loading ? '<span class="spinner"></span> Thinking…' : (reco ? '↻ Refresh recommendations' : '🔬 Recommend supplements for me')}
+      </button>
+      ${rc.error ? `<div class="error">${esc(rc.error)}</div>` : ''}
+      ${body}
+    </div>`;
+}
+
+async function runReco() {
+  const rc = state.reco;
+  rc.loading = true; rc.error = ''; renderStack();
+  try {
+    const stackList = store.getSupps().map((e) => ({
+      name: (e.result && e.result.product_name) || (e.input && e.input.product) || 'Supplement',
+      category: e.result && e.result.category,
+      verdict: e.result && e.result.verdict,
+    }));
+    const data = await recommendSupplements(stackList);
+    store.setSuppReco({ data, at: Date.now() });
+  } catch (e) {
+    rc.error = e.message;
+  } finally {
+    rc.loading = false;
+    renderStack();
+  }
 }
 
 // ================= FOODS =================
@@ -510,6 +635,8 @@ appEl.addEventListener('click', (e) => {
   if (e.target.id === 'clearScans') { store.clearScans(); renderCheck(); }
   const rm = e.target.closest('[data-remove-supp]');
   if (rm) { store.removeSupp(rm.dataset.removeSupp); renderStack(); }
+  const ed = e.target.closest('[data-edit-supp]');
+  if (ed) startEditSupp(ed.dataset.editSupp);
 });
 
 // ---------- boot ----------

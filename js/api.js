@@ -7,6 +7,7 @@ import {
   MODELS, buildSystemPrompt, SCAN_SCHEMA, SCAN_INSTRUCTION,
   PLAN_SCHEMA, buildPlanInstruction,
   SUPP_SCHEMA, buildSuppInstruction,
+  SUPP_RECO_SCHEMA, buildSuppRecoInstruction,
   RECIPE_SCHEMA, buildRecipeInstruction,
   LAB_SCHEMA, LAB_INSTRUCTION,
 } from './data.js';
@@ -135,14 +136,38 @@ export async function planDay(extra) {
   return parseJson(text);
 }
 
-export async function analyzeSupplement(brand, product, ingredients) {
+// input: {brand, product, dosage, ingredients}; photos: array of image data-URLs (optional).
+export async function analyzeSupplement(input, photos = []) {
+  const imageBlocks = [];
+  for (const dataUrl of photos) {
+    const [, meta, b64] = (dataUrl || '').match(/^data:(image\/\w+);base64,(.+)$/) || [];
+    if (b64) imageBlocks.push({ type: 'image', source: { type: 'base64', media_type: meta, data: b64 } });
+  }
+  const instruction = buildSuppInstruction({
+    ...input,
+    hasProductPhoto: !!photos[0],
+    hasIngredientsPhoto: !!photos[1],
+  });
   const { text } = await callClaude({
     model: MODELS.plan,
     system: currentSystem(),
     schema: SUPP_SCHEMA,
-    max_tokens: 3072, // thinking tokens + JSON
+    max_tokens: 4096, // vision + thinking tokens + JSON
     thinking: true,
-    messages: [{ role: 'user', content: buildSuppInstruction(brand, product, ingredients) }],
+    messages: [{ role: 'user', content: [...imageBlocks, { type: 'text', text: instruction }] }],
+  });
+  return parseJson(text);
+}
+
+// stackList: [{name, category, verdict}] describing the current stack.
+export async function recommendSupplements(stackList) {
+  const { text } = await callClaude({
+    model: MODELS.plan,
+    system: currentSystem(),
+    schema: SUPP_RECO_SCHEMA,
+    max_tokens: 4096,
+    thinking: true,
+    messages: [{ role: 'user', content: buildSuppRecoInstruction(stackList) }],
   });
   return parseJson(text);
 }

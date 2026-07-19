@@ -307,20 +307,29 @@ export const SUPP_SCHEMA = {
     },
     dosing_tip: { type: 'string' },
     keep_or_swap: { type: 'string' },
+    ingredients_read: { type: 'string' }, // ingredient list as read from photo/text (for storage)
   },
   required: [
     'product_name', 'category', 'verdict', 'verdict_reason', 'uc_assessment',
-    'muscle_assessment', 'flagged_ingredients', 'dosing_tip', 'keep_or_swap',
+    'muscle_assessment', 'flagged_ingredients', 'dosing_tip', 'keep_or_swap', 'ingredients_read',
   ],
 };
 
-export function buildSuppInstruction(brand, product, ingredients) {
+export function buildSuppInstruction({ brand, product, dosage, ingredients, hasProductPhoto, hasIngredientsPhoto }) {
+  const photos = [];
+  if (hasProductPhoto) photos.push('a photo of the supplement product/packaging');
+  if (hasIngredientsPhoto) photos.push('a photo of the ingredient list');
+  const photoNote = photos.length
+    ? `Attached image(s): ${photos.join(' and ')}. Read the brand, product and full ingredient/nutrition list from them.`
+    : '';
   return `Evaluate this dietary supplement for the user, judging BOTH goals: does it help lean-muscle building, AND is it compatible with ulcerative colitis (current mode above)?
 
 Supplement:
-- Brand: ${brand || '(not given)'}
-- Product: ${product || '(not given)'}
-- Ingredient list (as provided; may be partial): ${ingredients || '(not provided — use your best knowledge of this product; if unsure, say so)'}
+- Brand: ${brand || '(not given — read from photo if present)'}
+- Product: ${product || '(not given — read from photo if present)'}
+- Dosage the user actually takes: ${dosage || '(not given — comment on a sensible dose)'}
+- Ingredient list (text, may be partial): ${ingredients || '(not provided as text)'}
+${photoNote}
 
 Do an INGREDIENT-LEVEL review. Specifically flag anything that can aggravate UC or is questionable:
 - sugar alcohols (sorbitol, xylitol, maltitol, erythritol), artificial sweeteners, carrageenan, polysorbate-80, other emulsifiers/gums;
@@ -336,8 +345,61 @@ Return JSON:
 - uc_assessment: gut/inflammation view, referencing specific ingredients.
 - muscle_assessment: does it support his physique goal, and is the dose meaningful?
 - flagged_ingredients: array of { ingredient, concern } for anything problematic (empty array if none).
-- dosing_tip: how/when to take it for his goals (and to minimise gut impact).
-- keep_or_swap: keep it, or a specific better-tolerated alternative available in Germany (dm/Rossmann/Rewe/online).`;
+- dosing_tip: how/when to take it for his goals (and to minimise gut impact); factor in the user's stated dosage if given.
+- keep_or_swap: keep it, or a specific better-tolerated alternative available in Germany (dm/Rossmann/Rewe/online).
+- ingredients_read: the full ingredient list you used (transcribe from the photo/text; "" if none available).`;
+}
+
+// ---- Personalised supplement recommendations ----
+export const SUPP_RECO_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    missing: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          reason: { type: 'string' },
+          dose: { type: 'string' },
+          product_example: { type: 'string' },
+        },
+        required: ['name', 'reason', 'dose', 'product_example'],
+      },
+    },
+    remove: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          reason: { type: 'string' },
+        },
+        required: ['name', 'reason'],
+      },
+    },
+    notes: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['missing', 'remove', 'notes'],
+};
+
+export function buildSuppRecoInstruction(stackList) {
+  const stack = stackList && stackList.length
+    ? stackList.map((s) => `- ${s.name}${s.category ? ` (${s.category})` : ''}${s.verdict ? ` — current verdict: ${s.verdict}` : ''}`).join('\n')
+    : '- (empty — the user takes no supplements yet)';
+  return `Give the user a personalised supplement recommendation, using EVERYTHING known above: profile, goals, current UC mode, and especially the CURRENT BLOOD LABS. This is nutrition guidance, not a prescription.
+
+The user's CURRENT supplement stack:
+${stack}
+
+Return JSON:
+- missing: supplements that would genuinely benefit THIS user but are NOT already in the stack. Justify each from the labs/UC/muscle goals (e.g. low vitamin D → vitamin D3; UC + physique → omega-3, creatine; low ferritin → discuss iron with doctor). For each: name, reason (tie to a specific marker/goal), dose (typical effective, gut-safe dose), product_example (a specific option available in Germany: dm/Rossmann/Rewe/online). Only include things with a real rationale — do NOT pad the list.
+- remove: supplements ALREADY in the stack that are redundant, poorly tolerated for UC, low-value, or risky for this user, with a one-line reason each. Empty array if nothing should be removed.
+- notes: 1–3 short overall notes (interactions, timing, "confirm iron/serious markers with your doctor", etc.).
+Prioritise gut safety. Prefer well-evidenced, well-tolerated options; avoid recommending anything that could aggravate UC.`;
 }
 
 // ---- Recipes ----

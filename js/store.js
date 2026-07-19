@@ -10,6 +10,7 @@ const KEYS = {
   mode: 'ce.mode', // 'flare' | 'remission'
   scans: 'ce.scans', // recent scan history
   supps: 'ce.supps', // saved supplement stack
+  suppReco: 'ce.suppReco', // last personalised supplement recommendation
   labs: 'ce.labs', // merged blood-lab markers + upload history
 };
 
@@ -60,9 +61,15 @@ export const store = {
     list.unshift({ id: Date.now() + '', ...entry });
     write(KEYS.supps, list);
   },
+  updateSupp(id, patch) {
+    const list = read(KEYS.supps, []).map((s) => (s.id === id ? { ...s, ...patch } : s));
+    write(KEYS.supps, list);
+  },
   removeSupp(id) {
     write(KEYS.supps, read(KEYS.supps, []).filter((s) => s.id !== id));
   },
+  getSuppReco: () => read(KEYS.suppReco, null),
+  setSuppReco: (reco) => write(KEYS.suppReco, reco),
 
   // Blood labs: { markers: { key: {name,value,unit,reference_range,flag,category,date,at} }, uploads: [] }
   getLabs: () => read(KEYS.labs, { markers: {}, uploads: [] }),
