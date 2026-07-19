@@ -3,9 +3,9 @@
 import { store } from './store.js';
 import { FOODS, RULES } from './data.js';
 import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, recommendSupplements, analyzeRecipe, extractLabs } from './api.js';
-import { initSync, setupSync, syncNow, pull, syncConfigured } from './sync.js';
+import { initSync, setupSync, syncNow, pull, syncConfigured, diagnose } from './sync.js';
 
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 const appEl = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
 const modeToggle = document.getElementById('modeToggle');
@@ -647,6 +647,7 @@ function syncCardHtml() {
           <button class="btn" id="syncNowBtn" ${s.loading ? 'disabled' : ''}>${s.loading ? '<span class="spinner"></span> Syncing…' : '🔄 Sync now'}</button>
           <button class="btn secondary" id="syncOffBtn">Disable</button>
         </div>
+        <button class="btn secondary" id="syncDiagBtn" ${s.loading ? 'disabled' : ''}>🔎 Diagnose sync</button>
         ${meta.updatedAt ? `<div class="note" style="margin-top:8px">Last change: ${new Date(meta.updatedAt).toLocaleString()}</div>` : ''}
       ` : `
         <button class="btn" id="syncCreateBtn" ${s.loading ? 'disabled' : ''}>${s.loading ? '<span class="spinner"></span> Setting up…' : '✨ Start sync on this device'}</button>
@@ -670,7 +671,7 @@ function saveSyncCreds() {
 async function runSync(fn, okMsg) {
   const s = state.sync;
   s.loading = true; s.error = ''; s.msg = ''; renderProfile();
-  try { await fn(); s.msg = okMsg || 'Done.'; }
+  try { await fn(); if (okMsg) s.msg = okMsg; } // fn may set s.msg itself (e.g. diagnose)
   catch (e) { s.error = e.message; }
   finally { s.loading = false; renderProfile(); }
 }
@@ -688,7 +689,16 @@ function wireSyncCard() {
     store.setSyncCfg({ ...store.getSyncCfg(), gistId: id });
     runSync(syncNow, 'Linked. Merged data across both devices.');
   });
-  on('syncNowBtn', 'click', () => runSync(syncNow, 'Synced.'));
+  on('syncNowBtn', 'click', async () => {
+    const s = state.sync;
+    s.loading = true; s.error = ''; s.msg = ''; renderProfile();
+    try {
+      await syncNow();
+      s.msg = `Synced · this device now has ${store.getLabMarkers().length} lab markers and ${store.getSupps().length} supplements.`;
+    } catch (e) { s.error = e.message; }
+    finally { s.loading = false; renderProfile(); }
+  });
+  on('syncDiagBtn', 'click', () => runSync(async () => { state.sync.msg = await diagnose(); }, ''));
   on('syncOffBtn', 'click', () => { store.setSyncCfg({}); state.sync = { loading: false, msg: '', error: '' }; renderProfile(); });
 }
 

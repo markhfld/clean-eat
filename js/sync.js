@@ -130,6 +130,29 @@ export async function pull() {
   return { applied: changed };
 }
 
+// Diagnostic: report what's actually in the gist and whether this device can read it.
+export async function diagnose() {
+  const cfg = store.getSyncCfg();
+  if (!cfg.gistId || !cfg.token) return 'Not linked yet on this device.';
+  const g = await gh('/gists/' + cfg.gistId, { method: 'GET' });
+  const f = g.files && g.files[FILE];
+  if (!f) return 'The gist exists but has no clean-eat.json — the other device may not have pushed yet.';
+  let content = f.content;
+  if (f.truncated && f.raw_url) content = await (await fetch(f.raw_url)).text();
+  let encrypted = false;
+  try { const o = JSON.parse(content); encrypted = !!(o && o.enc === 'v1'); } catch { /* not json */ }
+  let remote;
+  try {
+    remote = await decryptBundle(content, cfg.passphrase);
+  } catch (e) {
+    return `Gist is ${encrypted ? 'encrypted' : 'plaintext'}, but this device could NOT read it: ${e.message} → the passphrase must match the other device.`;
+  }
+  const rl = remote && remote.data && remote.data['ce.labs'] && remote.data['ce.labs'].markers
+    ? Object.keys(remote.data['ce.labs'].markers).length : 0;
+  const local = store.getLabMarkers().length;
+  return `Read OK (${encrypted ? 'encrypted' : 'plaintext'}). Gist has ${rl} lab markers; this device has ${local}. Tap "Sync now" to merge.`;
+}
+
 // Full sync: merge in the remote, then push the merged result back so both ends converge.
 export async function syncNow() {
   const r = await pull();
