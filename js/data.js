@@ -7,11 +7,13 @@ export const MODELS = {
   plan: 'claude-opus-4-8',
 };
 
+// Neutral placeholder defaults — set your real values in the app's Profile tab
+// (stored only on your device). Nothing here identifies a specific person.
 export const DEFAULT_PROFILE = {
-  name: 'Mark',
+  name: '',
   sex: 'male',
-  age: 41,
-  weightKg: 65,
+  age: 30,
+  weightKg: 75,
   heightCm: 178,
   goal: 'Lean muscle gain — look ripped and sporty. Trains weightlifting 4–5×/week.',
   condition: 'Ulcerative colitis (colitis ulcerosa). Goal: no flare-provoking foods; long-term reduce symptoms toward remission.',
@@ -101,7 +103,7 @@ function foodTable() {
 export function buildSystemPrompt(profile, mode) {
   const t = profile.targets;
   const modeRules = mode === 'flare' ? RULES.flare : RULES.remission;
-  return `You are a precise personal nutrition coach for one user, Mark. You have two jobs at once and must always balance BOTH:
+  return `You are a precise personal nutrition coach for one user (referred to as "the user"). You have two jobs at once and must always balance BOTH:
 
 1) MUSCLE / PHYSIQUE: help him build lean muscle and look ripped. He does weightlifting 4–5×/week.
 2) ULCERATIVE COLITIS (colitis ulcerosa): every recommendation must avoid provoking gut inflammation, and steer toward long-term symptom reduction.
@@ -262,7 +264,7 @@ export const SUPP_SCHEMA = {
 };
 
 export function buildSuppInstruction(brand, product, ingredients) {
-  return `Evaluate this dietary supplement for Mark, judging BOTH goals: does it help lean-muscle building, AND is it compatible with ulcerative colitis (current mode above)?
+  return `Evaluate this dietary supplement for the user, judging BOTH goals: does it help lean-muscle building, AND is it compatible with ulcerative colitis (current mode above)?
 
 Supplement:
 - Brand: ${brand || '(not given)'}
@@ -321,7 +323,7 @@ export const RECIPE_SCHEMA = {
 };
 
 export function buildRecipeInstruction(text) {
-  return `Mark describes a meal / recipe he makes. Evaluate it for BOTH goals: lean-muscle building AND ulcerative-colitis safety (current mode above), then suggest concrete improvements.
+  return `The user describes a meal / recipe they make. Evaluate it for BOTH goals: lean-muscle building AND ulcerative-colitis safety (current mode above), then suggest concrete improvements.
 
 His recipe (free text — ingredients and/or method, portions may be rough):
 """
@@ -348,7 +350,7 @@ Context for today:
       ? 'This is a TRAINING day — bias carbs & total calories up, and place a protein+carb meal after training.'
       : 'This is a REST day — keep calories near maintenance, protein still high.'
   }
-- Extra notes from Mark: ${extra || '(none)'}
+- Extra notes from the user: ${extra || '(none)'}
 
 Requirements:
 - 4–5 meals. Every meal shows items with amount, protein_g and kcal.

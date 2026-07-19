@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Clean Eat** — a personal, phone-first nutrition assistant (PWA) for one user, Mark. It optimises every recommendation for **two simultaneous goals**:
+**Clean Eat** — a personal, phone-first nutrition assistant (PWA) for one person. It optimises every recommendation for **two simultaneous goals**:
 
 1. **Lean muscle gain** — ~200 g protein/day, slight calorie surplus, timed around weightlifting 4–5×/week.
 2. **Ulcerative colitis (colitis ulcerosa)** — avoid flare-provoking foods; steer toward remission.
