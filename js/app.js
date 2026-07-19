@@ -449,10 +449,31 @@ async function refreshSupp(id) {
   delete state.suppErrors[id];
   renderStack();
   try {
-    const input = entry.input || {};
-    const result = await analyzeSupplement(input, []); // re-analyse from stored inputs
-    const storedInput = { ...input, ingredients: input.ingredients || result.ingredients_read || '' };
-    store.updateSupp(id, { input: storedInput, result, at: Date.now() });
+    const prev = entry.result || {};
+    const inp = entry.input || {};
+    // Reconstruct identity from stored input, falling back to the previous analysis
+    // (legacy/photo-added entries may have no brand/product text saved).
+    const input = {
+      brand: inp.brand || '',
+      product: inp.product || prev.product_name || '',
+      dosage: inp.dosage || '',
+      ingredients: inp.ingredients || prev.ingredients_read || '',
+    };
+    if (!input.product.trim() && !input.brand.trim() && !input.ingredients.trim()) {
+      state.suppErrors[id] = 'No saved name/ingredients to re-analyse from. Tap Edit and add the brand/product (or a photo), then Update.';
+      return;
+    }
+    const result = await analyzeSupplement(input, []); // re-analyse from stored inputs (no photos on refresh)
+    // Guard: if the model could not identify it, KEEP the existing analysis rather than clobbering it.
+    const identified = result && result.product_name &&
+      !/^\s*(unknown|unidentified|no product)/i.test(result.product_name) &&
+      !/no product identified/i.test(result.verdict_reason || '');
+    if (!identified && prev.product_name) {
+      state.suppErrors[id] = 'Could not re-identify this supplement automatically (kept your existing analysis). Tap Edit to add the brand/product or a photo, then Update.';
+    } else {
+      const storedInput = { ...input, ingredients: input.ingredients || result.ingredients_read || '' };
+      store.updateSupp(id, { input: storedInput, result, at: Date.now() });
+    }
   } catch (e) {
     state.suppErrors[id] = e.message;
   } finally {
