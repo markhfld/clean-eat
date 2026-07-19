@@ -19,6 +19,9 @@ const state = {
   scan: { dataUrl: null, result: null, loading: false, error: '' },
   recipe: { text: '', result: null, loading: false, error: '' },
   supp: { brand: '', product: '', dosage: '', ingredients: '', photoProduct: null, photoIngredients: null, editingId: null, loading: false, error: '' },
+  suppExpanded: new Set(),   // ids of expanded supplement cards (default collapsed for overview)
+  suppRefreshing: new Set(), // ids currently re-analysing
+  suppErrors: {},            // id -> error message from a failed refresh
   reco: { loading: false, error: '' },
   labs: { loading: false, error: '' },
   plan: { extra: '', result: null, loading: false, error: '' },
@@ -278,6 +281,7 @@ function renderStack() {
   const s = state.supp;
   const saved = store.getSupps();
   const editing = !!s.editingId;
+  const allExpanded = saved.length > 0 && saved.every((e) => state.suppExpanded.has(e.id));
   const list = saved.length ? saved.map(suppCardHtml).join('') : '<p class="note">No supplements saved yet. Add one below.</p>';
 
   appEl.innerHTML = `
@@ -317,7 +321,10 @@ function renderStack() {
       ${s.error ? `<div class="error">${esc(s.error)}</div>` : ''}
     </div>
 
-    <h2>Your stack</h2>
+    <div class="supp-head" style="margin-top:22px">
+      <h2 style="margin:0;flex:1">Your stack</h2>
+      ${saved.length ? `<button class="link-btn" id="suppToggleAll">${allExpanded ? 'Collapse all' : 'Expand all'}</button>` : ''}
+    </div>
     ${list}
   `;
 
@@ -330,6 +337,14 @@ function renderStack() {
   if (cancel) cancel.addEventListener('click', () => { resetSuppForm(); renderStack(); });
   const recoBtn = document.getElementById('recoBtn');
   if (recoBtn) recoBtn.addEventListener('click', runReco);
+  const toggleAll = document.getElementById('suppToggleAll');
+  if (toggleAll) toggleAll.addEventListener('click', () => {
+    const saved = store.getSupps();
+    const allOpen = saved.length > 0 && saved.every((e) => state.suppExpanded.has(e.id));
+    if (allOpen) state.suppExpanded.clear();
+    else saved.forEach((e) => state.suppExpanded.add(e.id));
+    renderStack();
+  });
 }
 
 function wireSuppPhoto(btnId, inputId, key) {
@@ -365,8 +380,11 @@ async function runSupp() {
     const result = await analyzeSupplement(input, [s.photoProduct, s.photoIngredients]);
     // Persist the ingredient text we now know (typed, or read from the photo) for future edits.
     const storedInput = { ...input, ingredients: s.ingredients.trim() ? s.ingredients : (result.ingredients_read || '') };
-    if (s.editingId) store.updateSupp(s.editingId, { input: storedInput, result, at: Date.now() });
+    const editing = s.editingId;
+    if (editing) store.updateSupp(editing, { input: storedInput, result, at: Date.now() });
     else store.addSupp({ input: storedInput, result, at: Date.now() });
+    const expandId = editing || (store.getSupps()[0] && store.getSupps()[0].id);
+    if (expandId) state.suppExpanded.add(expandId); // show the fresh analysis
     resetSuppForm();
   } catch (e) {
     s.error = e.message;
@@ -392,14 +410,22 @@ function startEditSupp(id) {
 function suppCardHtml(entry) {
   const r = entry.result || {};
   const inp = entry.input || {};
+  const id = entry.id;
+  const open = state.suppExpanded.has(id);
+  const refreshing = state.suppRefreshing.has(id);
+  const err = state.suppErrors[id];
   const flags = (r.flagged_ingredients || []).map((f) => `<li><b>${esc(f.ingredient)}</b> — ${esc(f.concern)}</li>`).join('');
-  return `
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <h2 style="margin:0">${esc(r.product_name || inp.product || 'Supplement')}</h2>
-        <span class="verdict ${esc(r.verdict)}">${esc(r.verdict)}</span>
-      </div>
-      <p class="note" style="margin-top:6px">${esc(r.category || '')} — ${esc(r.verdict_reason || '')}</p>
+
+  const head = `
+    <div class="supp-head">
+      <button class="chev" data-toggle-supp="${esc(id)}" aria-label="${open ? 'Collapse' : 'Expand'}">${open ? '▾' : '▸'}</button>
+      <h2 data-toggle-supp="${esc(id)}">${esc(r.product_name || inp.product || 'Supplement')}</h2>
+      ${r.verdict ? `<span class="verdict ${esc(r.verdict)}" style="font-size:11px;padding:3px 8px">${esc(r.verdict)}</span>` : ''}
+      <button class="iconbtn" data-refresh-supp="${esc(id)}" ${refreshing ? 'disabled' : ''} aria-label="Re-analyse">${refreshing ? '<span class="spinner"></span>' : '↻'}</button>
+    </div>`;
+
+  const body = open ? `
+      <p class="note" style="margin-top:8px">${esc(r.category || '')}${r.category && r.verdict_reason ? ' — ' : ''}${esc(r.verdict_reason || '')}</p>
       ${inp.dosage ? `<p class="note">Your dosage: <b>${esc(inp.dosage)}</b></p>` : ''}
       <h2>Gut / UC</h2><p class="note">${esc(r.uc_assessment || '')}</p>
       ${r.liver_assessment ? `<h2>Liver 🫀</h2><p class="note">${esc(r.liver_assessment)}</p>` : ''}
@@ -408,10 +434,31 @@ function suppCardHtml(entry) {
       ${r.dosing_tip ? `<h2>Dosing</h2><p class="note">${esc(r.dosing_tip)}</p>` : ''}
       ${r.keep_or_swap ? `<h2>Keep or swap</h2><p class="note">${esc(r.keep_or_swap)}</p>` : ''}
       <div class="row">
-        <button class="btn secondary" data-edit-supp="${esc(entry.id)}" style="margin-top:0">Edit</button>
-        <button class="btn secondary" data-remove-supp="${esc(entry.id)}" style="margin-top:0">Remove</button>
-      </div>
-    </div>`;
+        <button class="btn secondary" data-edit-supp="${esc(id)}" style="margin-top:0">Edit</button>
+        <button class="btn secondary" data-remove-supp="${esc(id)}" style="margin-top:0">Remove</button>
+      </div>` : '';
+
+  return `<div class="card tight">${head}${err ? `<div class="error">${esc(err)}</div>` : ''}${body}</div>`;
+}
+
+async function refreshSupp(id) {
+  const entry = store.getSupps().find((x) => x.id === id);
+  if (!entry) return;
+  state.suppRefreshing.add(id);
+  state.suppExpanded.add(id);
+  delete state.suppErrors[id];
+  renderStack();
+  try {
+    const input = entry.input || {};
+    const result = await analyzeSupplement(input, []); // re-analyse from stored inputs
+    const storedInput = { ...input, ingredients: input.ingredients || result.ingredients_read || '' };
+    store.updateSupp(id, { input: storedInput, result, at: Date.now() });
+  } catch (e) {
+    state.suppErrors[id] = e.message;
+  } finally {
+    state.suppRefreshing.delete(id);
+    renderStack();
+  }
 }
 
 function recoCardHtml() {
@@ -644,9 +691,17 @@ function renderProfile() {
 
 // Delegated: clear scan history button (rendered conditionally).
 appEl.addEventListener('click', (e) => {
-  if (e.target.id === 'clearScans') { store.clearScans(); renderCheck(); }
+  if (e.target.id === 'clearScans') { store.clearScans(); renderCheck(); return; }
+  const tg = e.target.closest('[data-toggle-supp]');
+  if (tg) {
+    const id = tg.dataset.toggleSupp;
+    if (state.suppExpanded.has(id)) state.suppExpanded.delete(id); else state.suppExpanded.add(id);
+    renderStack(); return;
+  }
+  const rf = e.target.closest('[data-refresh-supp]');
+  if (rf) { refreshSupp(rf.dataset.refreshSupp); return; }
   const rm = e.target.closest('[data-remove-supp]');
-  if (rm) { store.removeSupp(rm.dataset.removeSupp); renderStack(); }
+  if (rm) { store.removeSupp(rm.dataset.removeSupp); renderStack(); return; }
   const ed = e.target.closest('[data-edit-supp]');
   if (ed) startEditSupp(ed.dataset.editSupp);
 });

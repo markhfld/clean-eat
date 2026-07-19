@@ -127,6 +127,13 @@ button.btn:active { transform: translateY(1px); }
 .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(0,0,0,.18); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .error { color: var(--red); font-size: 13px; margin-top: 10px; }
+.iconbtn, .chev { background: none; border: none; color: var(--muted); font-size: 18px; padding: 4px 6px; line-height: 1; flex: 0 0 auto; }
+.chev { width: 26px; text-align: center; }
+.iconbtn:active, .chev:active { color: var(--text); }
+.iconbtn:disabled { opacity: .5; }
+.supp-head { display: flex; align-items: center; gap: 8px; }
+.supp-head h2 { margin: 0; flex: 1; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.link-btn { background: none; border: none; color: var(--blue); font-size: 13px; padding: 0; }
 .preview { width: 100%; border-radius: 12px; margin-top: 12px; border: 1px solid var(--line); }
 .hidden { display: none !important; }
 
