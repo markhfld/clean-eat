@@ -3,6 +3,7 @@
 import { store } from './store.js';
 import { FOODS, RULES } from './data.js';
 import { scanProduct, planDay, fileToScaledDataUrl, testApiKey, analyzeSupplement, recommendSupplements, analyzeRecipe, extractLabs } from './api.js';
+import { initSync, setupSync, syncNow, pull, syncConfigured } from './sync.js';
 
 const appEl = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
@@ -24,6 +25,7 @@ const state = {
   suppErrors: {},            // id -> error message from a failed refresh
   reco: { loading: false, error: '' },
   labs: { loading: false, error: '' },
+  sync: { loading: false, msg: '', error: '' },
   plan: { extra: '', result: null, loading: false, error: '' },
 };
 
@@ -624,6 +626,71 @@ async function runLab(file) {
   }
 }
 
+function syncCardHtml() {
+  const cfg = store.getSyncCfg();
+  const s = state.sync;
+  const configured = !!(cfg.gistId && cfg.token);
+  const meta = store.getSyncMeta();
+  return `
+    <div class="card">
+      <h2 style="margin-top:0">🔄 Cloud sync across devices (optional)</h2>
+      <p class="note">Syncs your data through a <b>private, end-to-end-encrypted GitHub gist</b> — serverless, GitHub only ever stores ciphertext. Use the <b>same</b> GitHub token, passphrase and Sync ID on each device.</p>
+      <label>GitHub token — classic PAT with only the <b>gist</b> scope</label>
+      <input id="syncToken" type="password" placeholder="ghp_…" value="${esc(cfg.token || '')}" />
+      <label>Passphrase — encrypts your data; use the same on every device</label>
+      <input id="syncPass" type="password" placeholder="a secret only you know" value="${esc(cfg.passphrase || '')}" />
+      ${configured ? `
+        <label>Sync ID (copy this to your other device)</label>
+        <input id="syncId" type="text" readonly value="${esc(cfg.gistId)}" onclick="this.select()" />
+        <div class="row">
+          <button class="btn" id="syncNowBtn" ${s.loading ? 'disabled' : ''}>${s.loading ? '<span class="spinner"></span> Syncing…' : '🔄 Sync now'}</button>
+          <button class="btn secondary" id="syncOffBtn">Disable</button>
+        </div>
+        ${meta.updatedAt ? `<div class="note" style="margin-top:8px">Last change: ${new Date(meta.updatedAt).toLocaleString()}</div>` : ''}
+      ` : `
+        <button class="btn" id="syncCreateBtn" ${s.loading ? 'disabled' : ''}>${s.loading ? '<span class="spinner"></span> Setting up…' : '✨ Start sync on this device'}</button>
+        <label>…or link a device you already set up — paste its Sync ID</label>
+        <div class="row">
+          <input id="syncLinkId" type="text" placeholder="Sync ID (gist id)" />
+          <button class="btn secondary" id="syncLinkBtn" ${s.loading ? 'disabled' : ''}>Link</button>
+        </div>
+      `}
+      ${s.msg ? `<div class="note" style="margin-top:8px">✅ ${esc(s.msg)}</div>` : ''}
+      ${s.error ? `<div class="error">${esc(s.error)}</div>` : ''}
+    </div>`;
+}
+
+function saveSyncCreds() {
+  const t = document.getElementById('syncToken');
+  const p = document.getElementById('syncPass');
+  store.setSyncCfg({ ...store.getSyncCfg(), token: (t ? t.value : '').trim(), passphrase: p ? p.value : '' });
+}
+
+async function runSync(fn, okMsg) {
+  const s = state.sync;
+  s.loading = true; s.error = ''; s.msg = ''; renderProfile();
+  try { await fn(); s.msg = okMsg || 'Done.'; }
+  catch (e) { s.error = e.message; }
+  finally { s.loading = false; renderProfile(); }
+}
+
+function wireSyncCard() {
+  const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
+  on('syncToken', 'input', saveSyncCreds);
+  on('syncPass', 'input', saveSyncCreds);
+  on('syncCreateBtn', 'click', () => { saveSyncCreds(); runSync(setupSync, 'Sync is on. On your other device: enter the same token + passphrase and paste this Sync ID.'); });
+  on('syncLinkBtn', 'click', () => {
+    saveSyncCreds();
+    const idEl = document.getElementById('syncLinkId');
+    const id = idEl ? idEl.value.trim() : '';
+    if (!id) { state.sync.error = 'Paste the Sync ID from your first device.'; renderProfile(); return; }
+    store.setSyncCfg({ ...store.getSyncCfg(), gistId: id });
+    runSync(pull, 'Linked & pulled the latest data from your other device.');
+  });
+  on('syncNowBtn', 'click', () => runSync(syncNow, 'Synced.'));
+  on('syncOffBtn', 'click', () => { store.setSyncCfg({}); state.sync = { loading: false, msg: '', error: '' }; renderProfile(); });
+}
+
 function renderProfile() {
   const p = store.getProfile();
   const hasKey = !!store.getApiKey();
@@ -670,7 +737,11 @@ function renderProfile() {
       <button class="btn" id="saveProfile">Save profile</button>
       <div id="profStatus" class="note" style="margin-top:8px"></div>
     </div>
+
+    ${syncCardHtml()}
   `;
+
+  wireSyncCard();
 
   document.getElementById('saveKey').addEventListener('click', () => {
     store.setApiKey(document.getElementById('apiKey').value);
@@ -728,7 +799,9 @@ appEl.addEventListener('click', (e) => {
 });
 
 // ---------- boot ----------
+initSync(render);
 render();
+if (syncConfigured()) pull().catch(() => {}); // pull newest on launch
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
 }

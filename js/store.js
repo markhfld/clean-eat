@@ -21,6 +21,11 @@ function labTime(d) {
   return isNaN(t) ? -Infinity : t;
 }
 
+// Keys whose changes should sync across devices (excludes sync config/meta + nothing local-only).
+const SYNCED = [KEYS.apiKey, KEYS.profile, KEYS.mode, KEYS.scans, KEYS.supps, KEYS.suppReco, KEYS.labs];
+let changeHook = null;
+let suspend = false; // true while applying a remote bundle, so we don't echo a push
+
 function read(key, fallback) {
   try {
     const v = localStorage.getItem(key);
@@ -31,6 +36,7 @@ function read(key, fallback) {
 }
 function write(key, val) {
   localStorage.setItem(key, JSON.stringify(val));
+  if (!suspend && changeHook && SYNCED.includes(key)) changeHook(key);
 }
 
 export const store = {
@@ -113,4 +119,28 @@ export const store = {
     return { added, updated, kept };
   },
   clearLabs: () => write(KEYS.labs, { markers: {}, uploads: [] }),
+
+  // ---- sync plumbing ----
+  onChange(cb) { changeHook = cb; },
+  exportBundle() {
+    const d = {};
+    for (const k of SYNCED) {
+      const v = localStorage.getItem(k);
+      if (v != null) { try { d[k] = JSON.parse(v); } catch { /* skip */ } }
+    }
+    return d;
+  },
+  importBundle(data) {
+    suspend = true;
+    try {
+      for (const [k, v] of Object.entries(data || {})) {
+        if (SYNCED.includes(k)) localStorage.setItem(k, JSON.stringify(v));
+      }
+    } finally { suspend = false; }
+  },
+  // Sync config (token/gistId/passphrase) and clock are LOCAL only — never synced.
+  getSyncCfg: () => read('ce.sync', {}),
+  setSyncCfg: (c) => localStorage.setItem('ce.sync', JSON.stringify(c || {})),
+  getSyncMeta: () => read('ce.syncMeta', { updatedAt: 0 }),
+  setSyncMeta: (m) => localStorage.setItem('ce.syncMeta', JSON.stringify(m || { updatedAt: 0 })),
 };

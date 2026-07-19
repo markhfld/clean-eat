@@ -1,5 +1,5 @@
 // Service worker: cache the app shell for offline launch. API calls are never cached.
-const CACHE = 'clean-eat-v11';
+const CACHE = 'clean-eat-v12';
 const SHELL = [
   './',
   './index.html',
@@ -7,6 +7,7 @@ const SHELL = [
   './js/data.js',
   './js/store.js',
   './js/api.js',
+  './js/sync.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon.svg',

@@ -43,6 +43,8 @@ Push this folder to a repo and enable Pages (branch = `main`, folder = `/root` o
 
 ## Privacy
 
+**Cross-device sync (optional):** Profile → Cloud sync stores an **end-to-end-encrypted** copy of your data in a **private GitHub gist** (needs a classic GitHub token with only the `gist` scope + a passphrase). It's serverless — GitHub only ever holds ciphertext — and lets your iPhone and laptop share the same data. Off by default.
+
 Your API key, profile, scan history, and blood-lab markers live in your browser's `localStorage`. Data leaves the device only when you make a request to the Claude API — the photo when you scan, the text when you plan/evaluate, and the **lab-report PDF when you upload it** (sent to Claude to read; only the extracted markers are stored, the PDF itself is not).
 
 ## Not medical advice
